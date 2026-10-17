@@ -266,3 +266,5 @@ pre.copyfallback{white-space:pre-wrap;background:var(--bg);border:1px solid var(
 .legal-body a{color:var(--p0)}
 mark.ph{background:var(--mark);color:var(--mark-ink);padding:0 .25em;border-radius:4px}
 .ph-note{background:var(--mark);color:var(--mark-ink);border-radius:12px;padding:10px 14px;font-weight:600;font-size:.9rem;max-width:72ch}
+.pdf-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn-share[disabled]{opacity:.55;cursor:wait}

@@ -22,6 +22,7 @@ import { TONES, buildPrompt } from './prompt.js';
 import { getAi } from './ai.js';
 import { KINDS, kindById } from './kinds.js';
 import { LegalPage, LegalLinks, LEGAL_PAGES } from './legal.js';
+import { JUNK_RE, dayNum, fmtLong, isMedia, longestStreak, topWords, topEmojis } from './extra.js';
 
 const html = htm.bind(React.createElement);
 const DEMO_KIND = { 'lea-tim':'liebe', familie:'familie', wg:'anderes' };
@@ -175,16 +176,6 @@ function Sparkle(){
 }
 function Globe(){
   return html`<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9S14.6 18.4 12 21c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
-}
-
-function summaryText(a, title, ai){
-  const top = a.persons.slice(0,6);
-  const lines = [`Chatlupe: ${title}`, `${fmtDate(a.first)} – ${fmtDate(a.last)} · ${nf.format(a.total)} Nachrichten`, ''];
-  lines.push('Wer investiert mehr: ' + top.map(p=>`${p.name} ${pct(p.invest)}`).join(' · '));
-  top.forEach(p=>lines.push(`${p.name}: ${nf.format(p.msgs)} Nachrichten, antwortet im Schnitt nach ${fmtDur(p.medianReply)}, ${p.starters}× zuerst geschrieben`));
-  lines.push(`Längste Funkstille: ${fmtDur(a.longest.gap)}`);
-  if (ai){ lines.push('', ai.titel||'', ai.untertitel||''); if (ai.tipp) lines.push('Tipp: '+ai.tipp); }
-  return lines.join('\n');
 }
 
 function KindPicker({onPick, selected}){
@@ -381,10 +372,6 @@ const RSTEPS = [
   { t:'Eure Wörter.', s:null }
 ];
 const MONTH_LETTERS = 'JFMAMJJASOND';
-const JUNK_RE = /\S{45,}/;
-const dayNum = t => { const d = new Date(t); return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())/DAY); };
-const fmtLong = t => new Date(t).toLocaleDateString('de-DE',{day:'numeric',month:'long',year:'numeric'});
-const isMedia = m => MEDIA_RE.test(m.text) && m.text.length<80;
 
 function Card({tint, title, children, className}){
   return html`<section className=${'tcard'+(className?' '+className:'')} style=${tint?{'--tint':tint}:null}>
@@ -465,12 +452,7 @@ function Shares({a}){
 function Rhythm({a}){
   const fast = a.persons.filter(p=>p.replies.length>=5 && p.medianReply!=null).sort((x,y)=>x.medianReply-y.medianReply).slice(0,3);
   const podium = [fast[1], fast[0], fast[2]].map((p,i)=>p?{p, place:[2,1,3][i]}:null).filter(Boolean);
-  const streak = useMemo(()=>{
-    const ds=[...new Set(a.msgs.map(m=>dayNum(m.t)))].sort((x,y)=>x-y);
-    let best=ds.length?1:0, run=1;
-    for (let i=1;i<ds.length;i++){ run = ds[i]===ds[i-1]+1 ? run+1 : 1; if (run>best) best=run; }
-    return best;
-  },[a]);
+  const streak = useMemo(()=>longestStreak(a),[a]);
   const bd = a.busiest.k ? a.busiest.k.split('-').map(Number) : null;
   const gapDays = a.longest.gap/DAY;
   const night = [22,23,0,1,2,3,4].reduce((s,h)=>s+a.hours[h],0)/a.total;
@@ -544,8 +526,6 @@ function FirstDay({a}){
   </${Card}>`;
 }
 
-const STOPWORDS = new Set(('aber alle allem allen aller alles als also am an ander andere anderen auch auf aus bei beim bin bis bist bitte da dabei dafür dagegen daher damit dann darauf darum das dass dein deine deinem deinen deiner dem den denn der des dich die dies diese diesem diesen dieser dir doch dort du durch ein eine einem einen einer eines einfach er es etwas euch euer eure für gab ganz gar gibt gerade geht gut habe haben hab hast hat hatte hätte hier hin ich ihm ihn ihr ihre im immer in ist ja jetzt kann kannst kein keine man mal mehr mein meine meinem meinen mich mir mit muss nach nicht nichts noch nur ob oder ohne schon sehr sein seine sich sie sind so soll sollen sondern um und uns unser unsere unter viel vom von vor war waren warst was weil weiß wenn wer werde werden wie wieder will wir wird wo wohl zu zum zur über okay oki gerne heute morgen dann denn eben halt naja nee nein ach oh ah hm hmm haha hahaha hihi lol xd ok jaa jaja wieso warum weshalb also klar sicher ganz echt total voll schon wirklich vielleicht nochmal mehr weniger kurz lang gleich grad grade glaube denke finde sagen sagt gesagt machen macht gemacht mache kommt komme kommen geht gehen gehe sehen sieht wäre würde könnte könnt kannst müssen musst dir dich euch uns the and you that this for are was with have just not but what your all can get will its it’s dont don’t i’m im yes yeah medien ausgeschlossen weggelassen omitted media image video audio sticker nachricht gelöscht gelöschte bearbeitet null https http www com').split(' '));
-const WORD_RE = /[\p{L}][\p{L}'’-]{2,}/gu;
 
 function LastDay({a}){
   const {day, list} = useMemo(()=>{
@@ -561,21 +541,7 @@ function LastDay({a}){
 }
 
 function Words({a}){
-  const {words, emojis} = useMemo(()=>{
-    const names = new Set(a.persons.flatMap(p=>p.name.toLowerCase().split(/\s+/)));
-    const c = new Map();
-    for (const m of a.msgs){
-      if (isMedia(m) || DELETED_RE.test(m.text) || JUNK_RE.test(m.text)) continue;
-      for (const w of m.text.toLowerCase().replace(/https?:\S+/g,'').match(WORD_RE)||[]){
-        const k = w.replace(/['’-]+$/,'');
-        if (k.length<3 || STOPWORDS.has(k) || names.has(k)) continue;
-        c.set(k,(c.get(k)||0)+1);
-      }
-    }
-    const e = new Map();
-    for (const p of a.persons) for (const [k,n] of Object.entries(p.emojis)) e.set(k,(e.get(k)||0)+n);
-    return { words:[...c].sort((x,y)=>y[1]-x[1]).slice(0,10), emojis:[...e].sort((x,y)=>y[1]-x[1]).slice(0,8) };
-  },[a]);
+  const {words, emojis} = useMemo(()=>({ words: topWords(a,10), emojis: topEmojis(a,8) }),[a]);
   return html`<div style=${{display:'grid',gap:14}}>
     <${Card} tint="var(--p0)" title="Häufigste Wörter">
       ${words.length ? html`<ol className="wordlist">${words.map(([w,n],i)=>html`<li key=${w}><span className="mono muted rank">#${i+1}</span><b>${w}</b><span className="mono muted">${nf.format(n)}×</span></li>`)}</ol>`
@@ -603,16 +569,39 @@ function Details({a}){
   </details>`;
 }
 
-function Article({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
-  const [shared,setShared] = useState(null);
+function Article({a, title, kind, ai, tone, setTone, onRun, onStop, sampleAvail}){
   const st = ai || {status:'idle'};
   const d = st.status==='done' ? st.data : null;
+  const [pdfMsg,setPdfMsg] = useState(null);
+  const [pdfReady,setPdfReady] = useState(false);
+  const pdfRef = useRef(null);
+  const loading = st.status==='loading';
+  // Build the PDF ahead of time so "teilen" can hand it over while the tap still counts as a user gesture.
+  useEffect(()=>{
+    if (loading) return;
+    let alive = true; pdfRef.current = null; setPdfReady(false);
+    import('./pdf.js').then(m=>m.buildPdf({a, title, kind, ai:d}).then(blob=>{
+      if (!alive) return;
+      pdfRef.current = new File([blob], m.pdfFileName(title), {type:'application/pdf'});
+      setPdfReady(true);
+    })).catch(()=>{ if (alive) setPdfMsg('Das PDF ließ sich nicht erstellen. Lade die Seite neu und versuch es noch einmal.'); });
+    return ()=>{ alive = false; };
+  },[a, title, kind, d, loading]);
+  function download(file){
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a'); link.href = url; link.download = file.name;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 10000);
+  }
   async function share(){
-    const txt = summaryText(a, title, d);
-    try{
-      if (navigator.share){ await navigator.share({title:'Chatlupe: '+title, text:txt}); return; }
-      await navigator.clipboard.writeText(txt); setShared('ok'); setTimeout(()=>setShared(null),2200);
-    }catch(e){ if (e && e.name==='AbortError') return; setShared(txt); }
+    const file = pdfRef.current; if (!file) return;
+    setPdfMsg(null);
+    if (navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file], title:'Chatlupe-Report'}); return; }
+      catch(e){ if (e && e.name==='AbortError') return; }
+    }
+    download(file);
+    setPdfMsg('Teilen von Dateien geht in diesem Browser nicht, deshalb wurde das PDF heruntergeladen. Du kannst es jetzt in WhatsApp anhängen.');
   }
   let body;
   if (sampleAvail===false || st.hide){
@@ -654,9 +643,12 @@ function Article({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
     <h1 className="a-title">${d ? d.titel : title}</h1>
     ${d && d.untertitel && html`<p className="a-sub">${d.untertitel}</p>`}
     <div className="byline"><${Logo}/><div><b>Chatlupe</b><small>Liest mit, zählt nach und sagt dir ehrlich, was sie sieht.</small></div></div>
-    <button className="btn-share" onClick=${share}>↗ Report teilen</button>
-    ${shared==='ok' && html`<p className="muted small" style=${{textAlign:'center'}}>Zusammenfassung kopiert.</p>`}
-    ${shared && shared!=='ok' && html`<pre className="copyfallback">${shared}</pre>`}
+    <div className="pdf-actions">
+      <button className="btn-share" onClick=${share} disabled=${!pdfReady}>↗ Als PDF teilen</button>
+      <button className="btn-share" onClick=${()=>pdfRef.current && download(pdfRef.current)} disabled=${!pdfReady}>⬇ PDF herunterladen</button>
+    </div>
+    <p className="muted small">${loading ? 'Das PDF ist bereit, sobald der Report fertig geschrieben ist.' : pdfReady ? (d ? 'Das PDF enthält den Report und alle Zahlen.' : 'Das PDF enthält alle Zahlen.') : 'PDF wird vorbereitet…'}</p>
+    ${pdfMsg && html`<p className="muted small">${pdfMsg}</p>`}
     <p className="a-privacy">🔒 Die Statistik wurde in deinem Browser berechnet.${d ? ' Für den Text hat Claude nur die Zahlen und einen Ausschnitt gesehen.' : ' Bisher hat niemand deinen Chat gesehen.'}</p>
     ${body}
     <${Details} a=${a}/>
@@ -802,7 +794,7 @@ function App(){
     body = html`<${CreateStep} title=${title} a=${a} kind=${kind} lang=${lang} tone=${tone} setTone=${setTone} sampleAvail=${sampleAvail} onCreate=${create}/>`;
   } else {
     body = rstep<=7 ? html`<${ReportStory} a=${a} rstep=${rstep}/>`
-      : html`<${Article} a=${a} title=${title} ai=${ai} tone=${tone} setTone=${setTone} onRun=${runAi} onStop=${()=>ctl.current&&ctl.current.abort()} sampleAvail=${sampleAvail}/>`;
+      : html`<${Article} a=${a} title=${title} kind=${kind} ai=${ai} tone=${tone} setTone=${setTone} onRun=${runAi} onStop=${()=>ctl.current&&ctl.current.abort()} sampleAvail=${sampleAvail}/>`;
     if (rstep<=7) next = {label:rstep===7?'Report ansehen':'Weiter', go:'r'};
   }
 

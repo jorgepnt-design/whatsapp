@@ -15,7 +15,6 @@ export const OPERATOR = {
 };
 
 export const LEGAL_PAGES = {
-  impressum: 'Impressum',
   agb: 'Nutzungsbedingungen',
   datenschutz: 'Datenschutzerklärung'
 };
@@ -25,17 +24,6 @@ const F = (v, label) => v ? v : html`<mark className="ph">[${label}]</mark>`;
 const Address = () => html`<p>${F(O.name,'Vor- und Nachname')}<br/>${F(O.street,'Straße und Hausnummer')}<br/>${F(O.city,'PLZ und Ort')}<br/>${O.country}</p>`;
 const Email = () => O.email ? html`<a href=${'mailto:'+O.email}>${O.email}</a>` : F('', 'E-Mail-Adresse');
 
-function Impressum(){
-  return html`<div>
-    <h2>Angaben gemäß § 5 Digitale-Dienste-Gesetz (DDG)</h2>
-    <${Address}/>
-    <h2>Kontakt</h2>
-    <p>E-Mail: <${Email}/>${O.phone && html`<br/>Telefon: ${O.phone}`}</p>
-    <h2>Haftung für Inhalte und Links</h2>
-    <p>Die Inhalte dieser Seite werden mit Sorgfalt erstellt. Für die Richtigkeit, Vollständigkeit und Aktualität können wir dennoch keine Gewähr übernehmen. Die von der KI geschriebenen Reports sind automatisch erzeugt und geben keine Meinung des Betreibers wieder. Für Inhalte externer Seiten, auf die wir verlinken, sind ausschließlich deren Betreiber verantwortlich.</p>
-  </div>`;
-}
-
 function Terms(){
   return html`<div>
     <p className="muted">Stand: ${O.updated}</p>
@@ -43,7 +31,7 @@ function Terms(){
     <p>Diese Bedingungen gelten für die Nutzung der Website Chatlupe, die von ${F(O.name,'Vor- und Nachname')}, ${F(O.street,'Straße und Hausnummer')}, ${F(O.city,'PLZ und Ort')} (im Folgenden „wir“) betrieben wird.</p>
     <h2>2. Leistungen</h2>
     <p>Chatlupe wertet einen von dir hochgeladenen WhatsApp-Export statistisch aus. Diese Auswertung läuft vollständig in deinem Browser. Auf Wunsch schreibt eine KI (Claude von Anthropic) anschließend einen Report über deinen Chat. Die Nutzung ist kostenlos.</p>
-    <p>Die Reports dienen der Unterhaltung. Sie sind keine psychologische, therapeutische oder rechtliche Beratung. Eine KI kann sich irren, Dinge falsch deuten oder überspitzen.</p>
+    <p>Die Reports dienen der Unterhaltung. Sie sind keine psychologische, therapeutische oder rechtliche Beratung. Eine KI kann sich irren, Dinge falsch deuten oder überspitzen. Die Reports werden automatisch erzeugt und geben keine Meinung des Betreibers wieder.</p>
     <h2>3. Verfügbarkeit</h2>
     <p>Wir bemühen uns um einen störungsfreien Betrieb, schulden aber keine bestimmte Verfügbarkeit. Wir können den Dienst jederzeit ändern, einschränken oder einstellen, insbesondere die Zahl der KI-Reports begrenzen, um Missbrauch zu verhindern.</p>
     <h2>4. Speicherung</h2>
@@ -88,7 +76,7 @@ function Datenschutz(){
   </div>`;
 }
 
-const CONTENT = { impressum:Impressum, agb:Terms, datenschutz:Datenschutz };
+const CONTENT = { agb:Terms, datenschutz:Datenschutz };
 
 export function LegalPage({page, onBack}){
   const Body = CONTENT[page];
