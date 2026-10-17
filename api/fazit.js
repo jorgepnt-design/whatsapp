@@ -1,6 +1,9 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { paywallOn, verifyToken } from './_lib/paypal.js';
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 120 };
+
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5-5';
 
 const MAX_PROMPT = 120000;
 const WINDOW_MS = 10 * 60 * 1000;
@@ -49,24 +52,27 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'invalid_request' });
   }
   if (prompt.length > MAX_PROMPT) return res.status(413).json({ error: 'prompt_too_large' });
-  let upstream;
+  const client = new Anthropic({ apiKey: key, timeout: 110_000, maxRetries: 1 });
+  let message;
   try {
-    upstream = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 4000, messages: [{ role: 'user', content: prompt }] }),
-    });
-  } catch {
+    // Streaming keeps the long article from hitting HTTP timeouts; the server-side
+    // fallback re-runs the request on another model if this one declines it.
+    message = await client.beta.messages.stream({
+      model: MODEL,
+      max_tokens: 16000,
+      output_config: { effort: 'medium' },
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      messages: [{ role: 'user', content: prompt }],
+    }).finalMessage();
+  } catch (e) {
+    if (e instanceof Anthropic.RateLimitError) return res.status(429).json({ error: 'rate_limited' });
+    if (e instanceof Anthropic.APIError) console.error('Anthropic API', e.status, String(e.message).slice(0, 500));
+    else console.error('Anthropic API', e);
     return res.status(502).json({ error: 'upstream_error' });
   }
-  if (upstream.status === 429) return res.status(429).json({ error: 'rate_limited' });
-  if (!upstream.ok) {
-    const detail = await upstream.text().catch(() => '');
-    console.error('Anthropic API', upstream.status, detail.slice(0, 500));
-    return res.status(502).json({ error: 'upstream_error' });
-  }
-  const data = await upstream.json();
-  const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+  if (message.stop_reason === 'refusal') return res.status(422).json({ error: 'refused' });
+  const text = message.content.filter((c) => c.type === 'text').map((c) => c.text).join('');
   const parsed = extractJson(text);
   if (!parsed || !parsed.titel || !Array.isArray(parsed.kapitel)) return res.status(502).json({ error: 'invalid_json' });
   return res.status(200).json(parsed);
