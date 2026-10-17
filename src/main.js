@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import './styles.css';
 import './kinds.css';
 import { parseChat, MEDIA_RE, DELETED_RE } from './parser.js';
-import { analyze } from './analysis.js';
+import { analyze, DAY } from './analysis.js';
 import { nf, nf1, pct, MONTHS, fmtDate, fmtDur, pColor } from './format.js';
 import { SCENARIOS, makeDemo } from './demos.js';
 import { TONES, buildPrompt } from './prompt.js';
@@ -390,36 +390,218 @@ function Facts({a}){
   </div>`;
 }
 
-function ReportView({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
+const RSTEPS = [
+  { t:'Euer Chat, Tag für Tag.', s:'Ein Kästchen pro Tag. Je heller, desto mehr habt ihr geschrieben.' },
+  { t:'Wer redet, wer fängt an?', s:null },
+  { t:'Euer Rhythmus.', s:null },
+  { t:'Die längsten Nachrichten.', s:'Die ausführlichste Nachricht jeder Person.' },
+  { t:'So fing alles an.', s:null },
+  { t:'Was sich verändert hat.', s:null },
+  { t:'Was Chatlupe denkt.', s:null }
+];
+const MONTH_LETTERS = 'JFMAMJJASOND';
+const JUNK_RE = /\S{45,}/;
+const dayNum = t => { const d = new Date(t); return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())/DAY); };
+const fmtLong = t => new Date(t).toLocaleDateString('de-DE',{day:'numeric',month:'long',year:'numeric'});
+const isMedia = m => MEDIA_RE.test(m.text) && m.text.length<80;
+
+function Card({tint, title, children, className}){
+  return html`<section className=${'tcard'+(className?' '+className:'')} style=${tint?{'--tint':tint}:null}>
+    ${title && html`<h3 className="tcard-h">${title}</h3>`}
+    ${children}
+  </section>`;
+}
+
+function Calendar({a}){
+  const {years, level} = useMemo(()=>{
+    const c = new Map();
+    for (const m of a.msgs){ const d=new Date(m.t); const k=d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate(); c.set(k,(c.get(k)||0)+1); }
+    const vals = [...c.values()].sort((x,y)=>x-y);
+    const q = f => vals[Math.min(vals.length-1, Math.floor(vals.length*f))] || 1;
+    const q1=q(.25), q2=q(.5), q3=q(.8);
+    const level = n => n===0 ? 0 : n<=q1 ? 1 : n<=q2 ? 2 : n<=q3 ? 3 : 4;
+    const f=new Date(a.first), l=new Date(a.last), years=[];
+    for (let y=f.getFullYear(); y<=l.getFullYear(); y++){
+      const m0 = y===f.getFullYear()?f.getMonth():0, m1 = y===l.getFullYear()?l.getMonth():11, months=[];
+      for (let mo=m0; mo<=m1; mo++){
+        const dim = new Date(y,mo+1,0).getDate(), cells=[];
+        for (let d=1; d<=dim; d++) cells.push({d, n:c.get(y*10000+(mo+1)*100+d)||0});
+        months.push({mo, cells});
+      }
+      years.push({y, months});
+    }
+    return {years, level};
+  },[a]);
+  return html`<div className="cal">
+    <div className="cal-h">Kalender</div>
+    ${years.map(y=>html`<div key=${y.y} className="cal-year">
+      <div className="cal-y mono">${y.y}</div>
+      ${y.months.map(m=>html`<div key=${m.mo} className="cal-row">
+        <span className="cal-m" aria-hidden="true">${MONTH_LETTERS[m.mo]}</span>
+        ${m.cells.map(c=>html`<i key=${c.d} className=${'cal-c l'+level(c.n)} title=${`${c.d}. ${MONTHS[m.mo]} ${y.y}: ${c.n} ${c.n===1?'Nachricht':'Nachrichten'}`}></i>`)}
+      </div>`)}
+    </div>`)}
+    <div className="cal-legend"><span>weniger</span>${[0,1,2,3,4].map(l=>html`<i key=${l} className=${'cal-c l'+l}></i>`)}<span>mehr</span></div>
+  </div>`;
+}
+
+function Donut({parts}){
+  const r=38, C=2*Math.PI*r; let off=0;
+  return html`<svg viewBox="0 0 100 100" className="donut" role="img" aria-label=${parts.map(p=>p.label+' '+pct(p.v)).join(', ')}>
+    <circle cx="50" cy="50" r=${r} fill="none" stroke="var(--soft)" stroke-width="14"/>
+    ${parts.map((p,i)=>{ const len=p.v*C; const el=html`<circle key=${i} cx="50" cy="50" r=${r} fill="none" stroke=${p.color} stroke-width="14" stroke-dasharray=${`${Math.max(0,len-1.2)} ${C}`} stroke-dashoffset=${-off} transform="rotate(-90 50 50)"/>`; off+=len; return el; })}
+  </svg>`;
+}
+
+function Shares({a}){
+  const top = a.persons.slice(0,5);
+  const restN = a.total - top.reduce((s,p)=>s+p.msgs,0);
+  const parts = top.map(p=>({label:p.name, v:p.msgs/a.total, color:pColor(p.idx)}));
+  if (restN>0) parts.push({label:'Andere', v:restN/a.total, color:'var(--muted)'});
+  const stTotal = a.persons.reduce((s,p)=>s+p.starters,0) || 1;
+  const stMax = Math.max(...top.map(p=>p.starters/stTotal), .01);
+  return html`<div style=${{display:'grid',gap:14}}>
+    <${Card} tint="var(--p2)" title="Anteil am Chat">
+      <div className="share">
+        <${Donut} parts=${parts}/>
+        <ol className="share-list">${parts.map((p,i)=>html`<li key=${p.label}>
+          <i className="pdot" style=${{background:p.color}}></i>
+          ${i<top.length ? html`<span className="mono muted rank">#${i+1}</span>` : html`<span className="rank"></span>`}
+          <span className="share-n">${p.label}</span><b className="mono">${pct(p.v)}</b></li>`)}</ol>
+      </div>
+    </${Card}>
+    <${Card} tint="var(--p1)" title="Wer das Gespräch beginnt">
+      <p className="muted small">Wer nach mehr als 6 Stunden Pause als Erstes schreibt.</p>
+      <div className="hbars">${top.map(p=>{ const v=p.starters/stTotal; return html`<div className="hbar" key=${p.name}>
+        <span className="hbar-n">${p.name}</span>
+        <span className="hbar-t"><span style=${{width:Math.max(2,v/stMax*100)+'%',background:pColor(p.idx)}}></span></span>
+        <b className="mono">${pct(v)}</b></div>`; })}</div>
+    </${Card}>
+    <${Investment} a=${a}/>
+  </div>`;
+}
+
+function Rhythm({a}){
+  const fast = a.persons.filter(p=>p.replies.length>=5 && p.medianReply!=null).sort((x,y)=>x.medianReply-y.medianReply).slice(0,3);
+  const podium = [fast[1], fast[0], fast[2]].map((p,i)=>p?{p, place:[2,1,3][i]}:null).filter(Boolean);
+  const streak = useMemo(()=>{
+    const ds=[...new Set(a.msgs.map(m=>dayNum(m.t)))].sort((x,y)=>x-y);
+    let best=ds.length?1:0, run=1;
+    for (let i=1;i<ds.length;i++){ run = ds[i]===ds[i-1]+1 ? run+1 : 1; if (run>best) best=run; }
+    return best;
+  },[a]);
+  const bd = a.busiest.k ? a.busiest.k.split('-').map(Number) : null;
+  const gapDays = a.longest.gap/DAY;
+  const night = [22,23,0,1,2,3,4].reduce((s,h)=>s+a.hours[h],0)/a.total;
+  return html`<div style=${{display:'grid',gap:14}}>
+    <${Card} tint="var(--p2)" title="Typische Antwortzeit">
+      ${podium.length ? html`<div className="podium">${podium.map(({p,place})=>html`<div key=${p.name} className=${'pod pod'+place}>
+        <span className="medal" aria-label=${place+'. Platz'}>${place}</span>
+        <span className="pod-n">${p.name}</span>
+        <b><span className="big-s">${fmtDur(p.medianReply).replace(/ .*/,'')}</span> <small>${fmtDur(p.medianReply).replace(/^\S+ ?/,'')}</small></b>
+      </div>`)}</div>` : html`<p className="muted">Zu wenige Antworten für einen Vergleich.</p>`}
+      <p className="muted small">Median der Zeit bis zur Antwort, schnellste Person in der Mitte.</p>
+    </${Card}>
+    <${Card} tint="var(--p3)" title="Rekordtag">
+      <p className="stat"><b className="big">${nf.format(a.busiest.n)}</b> <span>Nachrichten am ${bd?fmtLong(new Date(bd[0],bd[1]-1,bd[2])):'–'}</span></p>
+    </${Card}>
+    <div className="grid-2s">
+      <${Card} tint="var(--p0)" title="Längste Serie">
+        <p className="stat"><b className="big">${nf.format(streak)}</b> <span>${streak===1?'Tag':'Tage'} am Stück</span></p>
+      </${Card}>
+      <${Card} tint="var(--p4)" title="Längste Funkstille">
+        <p className="stat">${gapDays>=1 ? html`<b className="big">${nf.format(Math.round(gapDays))}</b> <span>${Math.round(gapDays)===1?'Tag':'Tage'}</span>` : html`<b className="big">${fmtDur(a.longest.gap)}</b>`}</p>
+        <p className="muted small">${fmtDate(a.longest.from)} – ${fmtDate(a.longest.to)}</p>
+      </${Card}>
+    </div>
+    <${Card} tint="var(--mark)" title="Nach Uhrzeit">
+      <${HourChart} a=${a}/>
+      <p className="muted small">${pct(night)} zwischen 22 und 5 Uhr · Spitze um ${a.peakHour} Uhr</p>
+    </${Card}>
+  </div>`;
+}
+
+function Bubble2({m, a, clamp}){
+  const p = a.persons.find(x=>x.name===m.name);
+  const [open,setOpen] = useState(false);
+  const long = clamp && m.text.length>320;
+  return html`<div className="bubble2">
+    <span className="bubble2-n" style=${{color:p?pColor(p.idx):'inherit'}}>${m.name}</span>
+    <p className=${long && !open ? 'clamped' : ''}>${isMedia(m) ? '📎 Medien' : m.text}</p>
+    ${long && html`<button className="linkbtn" onClick=${()=>setOpen(!open)}>${open?'Weniger anzeigen':'Mehr anzeigen'}</button>`}
+  </div>`;
+}
+
+function Longest({a}){
+  const list = useMemo(()=> a.persons.slice(0,5).map(p=>{
+    let best=null, bw=0;
+    for (const m of a.msgs){
+      if (m.name!==p.name || isMedia(m) || DELETED_RE.test(m.text) || JUNK_RE.test(m.text)) continue;
+      const w = m.text.trim().split(/\s+/).filter(Boolean).length;
+      if (w>bw){ bw=w; best=m; }
+    }
+    return best ? {p, m:best, w:bw} : null;
+  }).filter(Boolean),[a]);
+  return html`<div style=${{display:'grid',gap:14}}>${list.map(({p,m,w})=>html`<${Card} key=${p.name} tint="var(--soft)" className="neutral">
+    <h3 className="tcard-h"><i className="pdot" style=${{background:pColor(p.idx)}}></i>${p.name}</h3>
+    <p className="stat"><b className="big">${nf.format(w)}</b> <span>${w===1?'Wort':'Wörter'}</span></p>
+    <p className="muted small">${fmtLong(m.t)}</p>
+    <${Bubble2} m=${m} a=${a} clamp=${true}/>
+  </${Card}>`)}</div>`;
+}
+
+function FirstDay({a}){
+  const {day, list} = useMemo(()=>{
+    const first = a.msgs.find(m=>!isMedia(m)) || a.msgs[0];
+    const d = dayNum(first.t);
+    let list = a.msgs.filter(m=>dayNum(m.t)===d).slice(0,8);
+    if (list.length<3) list = a.msgs.slice(0,8);
+    return {day:first.t, list};
+  },[a]);
+  return html`<${Card} tint="var(--soft)" className="neutral" title=${fmtLong(day)}>
+    <div className="chatlog">${list.map((m,i)=>html`<${Bubble2} key=${i} m=${m} a=${a}/>`)}</div>
+  </${Card}>`;
+}
+
+function ChangeStep({a}){
+  return html`<div style=${{display:'grid',gap:14}}>
+    <${Change} a=${a}/>
+    <div className="panel">
+      <div className="label">Nachrichten pro Monat</div>
+      <${MonthChart} a=${a}/>
+      <div className="legend">${a.persons.slice(0,6).map(p=>html`<span key=${p.name}><i className="dot" style=${{background:pColor(p.idx)}}></i>${p.name}</span>`)}</div>
+    </div>
+  </div>`;
+}
+
+function Closing({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
   const [copied,setCopied] = useState(null);
   async function copy(){
     const txt = summaryText(a,title, ai&&ai.status==='done'?ai.data:null);
     try{ await navigator.clipboard.writeText(txt); setCopied('ok'); setTimeout(()=>setCopied(null),2200); }
     catch(e){ setCopied(txt); }
   }
-  return html`<div className="report">
-    <${Facts} a=${a}/>
+  return html`<div style=${{display:'grid',gap:18}}>
     <${AiPanel} a=${a} st=${ai} tone=${tone} setTone=${setTone} onRun=${onRun} onStop=${onStop} sampleAvail=${sampleAvail}/>
-    <div className="grid2">
-      <${Investment} a=${a}/>
-      <${Change} a=${a}/>
-    </div>
+    <div className="label">Alle Zahlen pro Person</div>
     <${People} a=${a}/>
-    <div className="panel">
-      <div className="label">Nachrichten pro Monat</div>
-      <${MonthChart} a=${a}/>
-      <div className="legend">${a.persons.slice(0,6).map(p=>html`<span key=${p.name}><i className="dot" style=${{background:pColor(p.idx)}}></i>${p.name}</span>`)}</div>
-    </div>
-    <div className="grid2">
-      <div className="panel"><div className="label">Wann ihr schreibt</div><${HourChart} a=${a}/></div>
-      <${Highlights} a=${a}/>
-    </div>
     <div style=${{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
       <button className="btn btn-ink" onClick=${copy}>Zusammenfassung kopieren</button>
       ${copied==='ok' && html`<span className="muted">Kopiert. Ab in die Gruppe damit.</span>`}
     </div>
     ${copied && copied!=='ok' && html`<div><p className="muted">Kopieren ging hier nicht. Markiere den Text und kopiere ihn selbst:</p><pre className="copyfallback">${copied}</pre></div>`}
   </div>`;
+}
+
+function ReportStory(props){
+  const {a, rstep} = props;
+  if (rstep===1) return html`<${Calendar} a=${a}/>`;
+  if (rstep===2) return html`<${Shares} a=${a}/>`;
+  if (rstep===3) return html`<${Rhythm} a=${a}/>`;
+  if (rstep===4) return html`<${Longest} a=${a}/>`;
+  if (rstep===5) return html`<${FirstDay} a=${a}/>`;
+  if (rstep===6) return html`<${ChangeStep} a=${a}/>`;
+  return html`<${Closing} ...${props}/>`;
 }
 
 function Home({onStart, demos, onDemo}){
@@ -460,6 +642,7 @@ function App(){
   const [lang,setLang] = useState('Deutsch');
   const [tone,setTone] = useState('ehrlich');
   const [focus,setFocus] = useState(null);
+  const [rstep,setRstep] = useState(1);
   const [ai,setAi] = useState(null);
   const [sampleAvail,setSampleAvail] = useState(null);
   const sampleRef = useRef(null);
@@ -468,7 +651,7 @@ function App(){
     let s=null; try{ s = await getAi(); }catch(e){ s=null; }
     if(!alive) return; sampleRef.current=s; setSampleAvail(!!s);
   })(); return ()=>{alive=false}; },[]);
-  useEffect(()=>{ window.scrollTo(0,0); },[step,view]);
+  useEffect(()=>{ window.scrollTo(0,0); },[step,view,rstep]);
 
   const cur = view==='flow' ? Math.min(step, chat ? 8 : 3) : 0;
   const rows = useRows(chat ? chat.msgs : []);
@@ -504,18 +687,17 @@ function App(){
     setAliases({}); setName(d.title); setFocus(null); setKind(k=>k||DEMO_KIND[d.id]); setView('flow'); setStep(4);
   }
   function setAlias(orig, val){ setAliases(o=>({...o, [orig]:val})); }
-  function back(){ if (cur>1) setStep(cur-1); else setView('home'); }
+  function back(){ if (cur===8 && rstep>1) setRstep(rstep-1); else if (cur>1) setStep(cur-1); else setView('home'); }
   function restart(){ setChat(null); setAliases({}); setName(''); setKind(null); setFocus(null); setStep(1); }
-  function create(){ setStep(8); if (sampleRef.current) runAi(tone); }
+  function create(){ setRstep(1); setStep(8); if (sampleRef.current) runAi(tone); }
 
   if (view==='home') return html`<${Home} onStart=${start} demos=${demos} onDemo=${openDemo}/>`;
 
   const k = kindById(kind);
-  const wide = cur===8;
+  const wide = cur===8 && rstep>=6;
+  const shownStep = cur===8 ? rstep : cur;
   let head, body, next = null;
-  if (cur===8){
-    head = {t:title, s:'Dein Report. Alles, was Chatlupe in eurem Chat gefunden hat.'};
-  } else head = STEPS[cur-1];
+  head = cur===8 ? RSTEPS[rstep-1] : STEPS[cur-1];
   if (cur===1){
     body = html`<${KindPicker} selected=${kind} onPick=${id=>{ setKind(id); setStep(2); }}/>`;
     if (kind) next = {label:'Weiter', go:2};
@@ -544,14 +726,15 @@ function App(){
   } else if (cur===7){
     body = html`<${CreateStep} title=${title} a=${a} kind=${kind} lang=${lang} tone=${tone} setTone=${setTone} sampleAvail=${sampleAvail} onCreate=${create}/>`;
   } else {
-    body = html`<${ReportView} a=${a} title=${title} ai=${ai} tone=${tone} setTone=${setTone} onRun=${runAi} onStop=${()=>ctl.current&&ctl.current.abort()} sampleAvail=${sampleAvail}/>`;
+    body = html`<${ReportStory} a=${a} rstep=${rstep} title=${title} ai=${ai} tone=${tone} setTone=${setTone} onRun=${runAi} onStop=${()=>ctl.current&&ctl.current.abort()} sampleAvail=${sampleAvail}/>`;
+    if (rstep<7) next = {label:rstep===6?'Zum Fazit':'Weiter', go:'r'};
   }
 
   return html`<div className="flow">
     <div className="flowbar"><div className=${'flowbar-in'+(wide?' wide':'')}>
       <button className="iconbtn" aria-label=${cur===1?'Zur Startseite':'Zurück'} onClick=${back}><${ArrowLeft}/></button>
-      <div className="progress" role="progressbar" aria-label="Fortschritt" aria-valuemin="1" aria-valuemax="7" aria-valuenow=${Math.min(cur,7)}><span style=${{width:(Math.min(cur,7)/7*100)+'%'}}></span></div>
-      <span className="stepcount">${cur===8 ? 'Fertig' : `${cur} von 7`}</span>
+      <div className="progress" role="progressbar" aria-label="Fortschritt" aria-valuemin="1" aria-valuemax="7" aria-valuenow=${shownStep}><span style=${{width:(shownStep/7*100)+'%'}}></span></div>
+      <span className="stepcount">${cur===8 ? `Report ${rstep} von 7` : `${cur} von 7`}</span>
     </div></div>
     <main className=${'flow-body'+(wide?' wide':'')}>
       <div className="step-head">
@@ -564,9 +747,9 @@ function App(){
       </div>
       ${body}
       <div className="flow-nav">
-        ${next && html`<button className="btn btn-mark btn-lg" onClick=${()=>setStep(next.go)}>${next.label} <span aria-hidden="true">→</span></button>`}
-        ${cur===8 && html`<button className="btn btn-ink" onClick=${restart}>Neuen Chat auswerten</button>`}
-        ${cur===8 && html`<button className="btn btn-ghost" onClick=${()=>setView('home')}>Zur Startseite</button>`}
+        ${next && html`<button className="btn btn-mark btn-lg" onClick=${()=> next.go==='r' ? setRstep(rstep+1) : setStep(next.go)}>${next.label} <span aria-hidden="true">→</span></button>`}
+        ${cur===8 && rstep===7 && html`<button className="btn btn-ink" onClick=${restart}>Neuen Chat auswerten</button>`}
+        ${cur===8 && rstep===7 && html`<button className="btn btn-ghost" onClick=${()=>setView('home')}>Zur Startseite</button>`}
       </div>
     </main>
   </div>`;

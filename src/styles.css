@@ -173,3 +173,52 @@ pre.copyfallback{white-space:pre-wrap;background:var(--bg);border:1px solid var(
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn-create{background:#F4F7F5;color:#10231F}}
 :root[data-theme="dark"] .btn-create{background:#F4F7F5;color:#10231F}
 @media (prefers-reduced-motion: reduce){.lang,.btn-create{transition:none}}
+.small{font-size:.85rem}
+.tcard{--tint:var(--soft);background:color-mix(in srgb, var(--tint) 22%, var(--surface));border:1px solid color-mix(in srgb, var(--tint) 35%, var(--line));border-radius:20px;padding:18px 20px;display:grid;gap:12px;min-width:0}
+.tcard.neutral{background:var(--soft);border-color:var(--line)}
+.tcard-h{font-family:var(--f-body);font-size:1.05rem;font-weight:700;display:flex;align-items:center;gap:8px}
+.stat{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.stat .big{font-family:var(--f-display);font-size:clamp(2rem,6vw,2.6rem);line-height:1}
+.stat span{color:var(--muted);font-size:.9rem}
+.grid-2s{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:14px}
+.cal{background:#142320;color:#E6EFEB;border-radius:20px;padding:18px 18px 16px;display:grid;gap:12px;overflow:hidden}
+.cal-h{font-weight:700;font-size:1.05rem;color:var(--mark)}
+.cal-year{display:grid;gap:3px}
+.cal-y{font-size:.82rem;color:#93A69F;margin-bottom:4px}
+.cal-row{display:grid;grid-template-columns:14px repeat(31,minmax(0,1fr));gap:3px;align-items:center}
+.cal-m{font-size:.68rem;font-weight:700;color:#93A69F}
+.cal-c{display:block;aspect-ratio:1;border-radius:3px;background:rgba(255,255,255,.07)}
+.cal-c.l1{background:color-mix(in srgb, #F0CD43 32%, #142320)}
+.cal-c.l2{background:color-mix(in srgb, #F0CD43 55%, #142320)}
+.cal-c.l3{background:color-mix(in srgb, #F0CD43 78%, #142320)}
+.cal-c.l4{background:#FFE07A}
+.cal-legend{display:flex;align-items:center;gap:4px;font-size:.72rem;color:#93A69F;justify-content:flex-end}
+.cal-legend .cal-c{width:11px}
+.share{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.donut{width:120px;height:120px;flex:none}
+.share-list{list-style:none;margin:0;padding:0;display:grid;gap:7px;flex:1;min-width:200px}
+.share-list li{display:grid;grid-template-columns:14px 28px 1fr auto;align-items:center;gap:6px}
+.share-list .rank{font-size:.78rem}
+.share-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbars{display:grid;gap:10px}
+.hbar{display:grid;grid-template-columns:minmax(0,9rem) 1fr 3.2rem;align-items:center;gap:12px;font-size:.92rem}
+.hbar-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar-t{height:12px;border-radius:999px;background:color-mix(in srgb, var(--tint) 25%, var(--soft));overflow:hidden}
+.hbar-t span{display:block;height:100%;border-radius:999px}
+.hbar b{text-align:right}
+.podium{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:end}
+.pod{display:grid;justify-items:center;gap:4px;text-align:center;padding:14px 6px;border-radius:14px;background:color-mix(in srgb, var(--surface) 70%, transparent);min-width:0}
+.pod1{padding-block:26px 18px;background:var(--surface)}
+.pod-n{font-size:.82rem;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pod b{font-weight:700}
+.pod .big-s{font-family:var(--f-display);font-size:1.4rem}
+.pod small{color:var(--muted)}
+.medal{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:.8rem;color:#3A2A00;background:#E9C45A;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
+.pod2 .medal{background:#CBD3D6}
+.pod3 .medal{background:#D9A27A}
+.bubble2{background:var(--surface);border-radius:16px 16px 16px 6px;padding:10px 14px;display:grid;gap:4px;max-width:100%;justify-self:start;box-shadow:0 1px 0 var(--line)}
+.bubble2-n{font-size:.78rem;font-weight:700}
+.bubble2 p{white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble2 p.clamped{max-height:9.5em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 60%,transparent);mask-image:linear-gradient(#000 60%,transparent)}
+.bubble2 .linkbtn{justify-self:center;color:var(--ink);font-size:.88rem}
+.chatlog{display:grid;gap:8px}
