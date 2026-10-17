@@ -115,36 +115,25 @@ function Highlights({a}){
   </div></div>`;
 }
 
-function AiPanel({a, title, kind, aiState, setAiState, sampleAvail, sampleRef}){
-  const [tone,setTone] = useState('ehrlich');
-  const ctl = useRef(null);
-  const st = aiState || {status:'idle'};
-  async function run(){
-    const s = sampleRef.current; if (!s) return;
-    ctl.current = new AbortController();
-    setAiState({status:'loading'});
-    try{
-      const res = await s.json(buildPrompt(a,tone,title,kind), {signal:ctl.current.signal});
-      if (!res || typeof res!=='object' || !res.fazit) throw {code:'invalid_json'};
-      setAiState({status:'done', data:res, tone});
-    }catch(e){
-      const code = e && e.code;
-      const msg = {
-        cancelled:null,
-        not_granted:'Du hast Claude für diese Seite nicht freigegeben. Das KI-Fazit bleibt deshalb aus, die Statistik funktioniert weiter.',
-        sampling_disabled:'Claude ist für dieses Konto nicht verfügbar.',
-        rate_limited:'Gerade zu viele Anfragen. Versuch es in ein paar Minuten noch einmal.',
-        prompt_too_large:'Der Chat ist zu lang für ein Fazit. Lade einen kürzeren Export hoch.',
-        invalid_json:'Die Antwort kam in einem unerwarteten Format. Tipp nochmal auf den Knopf.',
-        refused:'Claude hat diesen Chat nicht bewertet. Probier einen anderen Ton.'
-      };
-      const text = code in msg ? msg[code] : 'Verbindung unterbrochen. Tipp nochmal auf den Knopf.';
-      setAiState(text ? {status:'error', msg:text, hide: code==='not_granted'||code==='sampling_disabled'} : {status:'idle'});
-    }
-  }
+const AI_ERRORS = {
+  cancelled:null,
+  not_granted:'Du hast Claude für diese Seite nicht freigegeben. Das KI-Fazit bleibt deshalb aus, die Statistik funktioniert weiter.',
+  sampling_disabled:'Claude ist für dieses Konto nicht verfügbar.',
+  rate_limited:'Gerade zu viele Anfragen. Versuch es in ein paar Minuten noch einmal.',
+  prompt_too_large:'Der Chat ist zu lang für ein Fazit. Lade einen kürzeren Export hoch.',
+  invalid_json:'Die Antwort kam in einem unerwarteten Format. Tipp nochmal auf den Knopf.',
+  refused:'Claude hat diesen Chat nicht bewertet. Probier einen anderen Ton.'
+};
+
+function ToneButtons({tone, setTone}){
+  return html`<div className="tones" role="group" aria-label="Ton wählen">${Object.entries(TONES).map(([k,v])=>html`<button key=${k} className="tone" aria-pressed=${tone===k} onClick=${()=>setTone(k)}>${v.label}</button>`)}</div>`;
+}
+
+function AiPanel({a, st, tone, setTone, onRun, onStop, sampleAvail}){
+  st = st || {status:'idle'};
   if (sampleAvail===false || st.hide) return html`<div className="panel ai">
     <div className="label">KI-Fazit</div>
-    <p>${st.hide ? st.msg : 'Das KI-Fazit ist in dieser Version nicht eingerichtet. Alle Zahlen oben funktionieren trotzdem.'}</p>
+    <p>${st.hide ? st.msg : 'Das KI-Fazit ist in dieser Version nicht eingerichtet. Alle Zahlen unten funktionieren trotzdem.'}</p>
   </div>`;
   return html`<div className="panel ai" id="fazit">
     <div className="label">Was Chatlupe wirklich denkt</div>
@@ -156,15 +145,14 @@ function AiPanel({a, title, kind, aiState, setAiState, sampleAvail, sampleRef}){
         return html`<div className="ai-person" key=${i}><b><i className="dot" style=${{background:pColor(match?match.idx:i)}}></i>${p.name} <em>${p.rolle}</em></b><span>${p.urteil}</span></div>`; })}</div>`}
       ${st.data.veraenderung && html`<div><div className="label">Was sich verändert hat</div><p>${st.data.veraenderung}</p></div>`}
       ${st.data.tipp && html`<div><div className="label">Tipp</div><p>${st.data.tipp}</p></div>`}
-      <div className="tones">${Object.entries(TONES).map(([k,v])=>html`<button key=${k} className="tone" aria-pressed=${tone===k} onClick=${()=>setTone(k)}>${v.label}</button>`)}
-        <button className="btn btn-mark" onClick=${run}>Neu bewerten</button></div>
+      <div className="tones"><${ToneButtons} tone=${tone} setTone=${setTone}/><button className="btn btn-mark" onClick=${()=>onRun(tone)}>Neu bewerten</button></div>
     ` : st.status==='loading' ? html`
       <div className="thinking"><i></i><i></i><i></i><span>Chatlupe liest mit. Das dauert meist 20 bis 60 Sekunden.</span></div>
-      <div><button className="btn btn-ghost" style=${{color:'var(--bg)'}} onClick=${()=>ctl.current&&ctl.current.abort()}>Stopp</button></div>
+      <div><button className="btn btn-ghost" style=${{color:'var(--bg)'}} onClick=${onStop}>Stopp</button></div>
     ` : html`
       <p>Lass Claude den Chat lesen und dir sagen, wer welche Rolle spielt und was sich verändert hat.</p>
-      <div className="tones" role="group" aria-label="Ton wählen">${Object.entries(TONES).map(([k,v])=>html`<button key=${k} className="tone" aria-pressed=${tone===k} onClick=${()=>setTone(k)}>${v.label}</button>`)}</div>
-      <div><button className="btn btn-mark" onClick=${run} disabled=${sampleAvail===null}>${sampleAvail===null?'Wird vorbereitet…':'KI-Fazit erstellen'}</button></div>
+      <${ToneButtons} tone=${tone} setTone=${setTone}/>
+      <div><button className="btn btn-mark" onClick=${()=>onRun(tone)} disabled=${sampleAvail===null}>${sampleAvail===null?'Wird vorbereitet…':'KI-Fazit erstellen'}</button></div>
       ${st.status==='error' && html`<p style=${{color:'var(--mark)'}}>${st.msg}</p>`}
       <p className="muted" style=${{fontSize:'.82rem'}}>Beim Tippen gehen die Statistik und ein Ausschnitt von rund 220 Nachrichten an Claude. Vorher nichts.</p>
     `}
@@ -175,21 +163,37 @@ const STEPS = [
   { t:'Was für ein Chat?', s:'Damit Chatlupe Rollen und Dynamik richtig deutet.' },
   { t:'Chat exportieren', s:'So holst du den Verlauf aus WhatsApp. Dauert eine Minute.' },
   { t:'Chat hochladen', s:'Die Datei bleibt in deinem Browser.' },
-  { t:'Wer ist dabei?', s:'Gib dem Chat einen Namen und sag, wer hinter den Nummern steckt.' },
-  { t:'Wer investiert mehr?', s:null },
-  { t:'Verlauf', s:'Wie sich euer Chat über die Zeit entwickelt hat.' },
-  { t:'Was Chatlupe denkt', s:'Zum Schluss das Fazit. Und eine Zusammenfassung für die Gruppe.' }
+  { t:'Wer ist dabei?', s:'Gib dem Chat einen Namen. So verteilen sich die Nachrichten.' },
+  { t:'Namen aufräumen', s:'Ersetze Nummern, Spitznamen und Emojis durch Vornamen, damit Chatlupe weiß, wer wer ist.' },
+  { t:'In welcher Sprache soll dein Report sein?', s:'Muss nicht die Sprache deines Chats sein.' },
+  { t:'Report erstellen', s:'Noch ein Blick auf alles, dann geht es los.' }
+];
+const LANGS = [
+  {c:'DE',n:'Deutsch'},{c:'GB',n:'Englisch'},{c:'ES',n:'Spanisch'},
+  {c:'FR',n:'Französisch'},{c:'IT',n:'Italienisch'},{c:'BR',n:'Portugiesisch (Brasilien)'},
+  {c:'PT',n:'Portugiesisch (Portugal)'},{c:'NL',n:'Niederländisch'},{c:'PL',n:'Polnisch'},
+  {c:'TR',n:'Türkisch'},{c:'SA',n:'Arabisch'},{c:'UA',n:'Ukrainisch'}
 ];
 const isPhone = s => /^\+?[\d\s\-()\/.]+$/.test(s) && (s.match(/\d/g)||[]).length>=7;
+const cleanAlias = v => (v||'').trim();
 
 function ArrowLeft(){
   return html`<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 function Bubble(){
-  return html`<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" className="bubble"><path d="M12 3.5c-4.97 0-9 3.36-9 7.5 0 2.1 1.04 4 2.72 5.36L5 20.5l4.1-2.05c.92.23 1.9.35 2.9.35 4.97 0 9-3.36 9-7.5s-4.03-7.8-9-7.8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+  return html`<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c-4.97 0-9 3.36-9 7.5 0 2.1 1.04 4 2.72 5.36L5 20.5l4.1-2.05c.92.23 1.9.35 2.9.35 4.97 0 9-3.36 9-7.5s-4.03-7.8-9-7.8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
 }
 function Pencil(){
   return html`<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+}
+function PersonIcon(){
+  return html`<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+}
+function Sparkle(){
+  return html`<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" fill="currentColor"/></svg>`;
+}
+function Globe(){
+  return html`<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9S14.6 18.4 12 21c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
 }
 
 function summaryText(a, title, ai){
@@ -271,7 +275,7 @@ function UploadStep({onChat, chat, demos, onDemo}){
       </div>`}
       ${err && html`<p className="err" role="alert">${err}</p>`}
       ${chat && !err && html`<p className="ok-line">Geladen: <b>${chat.title || 'Dein Chat'}</b> · ${nf.format(chat.msgs.length)} Nachrichten${chat.isDemo?' (Beispiel)':''}</p>`}
-      <p className="privacy">Die Auswertung läuft komplett in deinem Browser. Deine Datei wird nirgends hochgeladen oder gespeichert. Nur wenn du am Ende ein KI-Fazit anforderst, gehen Statistik und ein Ausschnitt an Claude.</p>
+      <p className="privacy">Die Auswertung läuft komplett in deinem Browser. Deine Datei wird nirgends hochgeladen oder gespeichert. Nur wenn du am Ende den Report mit KI-Fazit erstellst, gehen Statistik und ein Ausschnitt an Claude.</p>
     </div>
     <div className="demos" role="group" aria-label="Beispielchats">
       <span className="label" style=${{marginRight:4}}>Kein Export zur Hand? Beispiel nehmen</span>
@@ -287,43 +291,93 @@ function DemoButton({d, i, onClick, pressed}){
     <span><b>${d.title}</b><small>${d.tag}</small></span></button>`;
 }
 
-function Participants({msgs, aliases, setAlias}){
-  const rows = useMemo(()=>{
+function useRows(msgs){
+  return useMemo(()=>{
     const c = new Map(); for (const m of msgs) c.set(m.name,(c.get(m.name)||0)+1);
     return [...c].sort((a,b)=>b[1]-a[1]).map(([name,count],idx)=>({name,count,idx}));
   },[msgs]);
-  const [open,setOpen] = useState(null);
-  const [draft,setDraft] = useState('');
+}
+
+function Participants({rows, total, aliases, onWho}){
   const [all,setAll] = useState(false);
-  const total = msgs.length, max = rows.length ? rows[0].count : 1;
+  const max = rows.length ? rows[0].count : 1;
   const shown = all ? rows : rows.slice(0,30);
-  const samples = n => msgs.filter(m=>m.name===n && !MEDIA_RE.test(m.text) && !DELETED_RE.test(m.text) && m.text.length>12)
-    .slice(-80).map(m=>m.text.replace(/\n/g,' ').slice(0,140)).filter((t,i,arr)=>arr.indexOf(t)===i).sort((a,b)=>b.length-a.length).slice(0,3);
-  function edit(r){ setOpen(r.name); setDraft(aliases[r.name]||''); }
   return html`<div style=${{display:'grid',gap:10}}>
     <ul className="plist">${shown.map(r=>{
-      const alias = aliases[r.name], phone = isPhone(r.name), editing = open===r.name;
-      const ex = editing ? samples(r.name) : [];
+      const alias = cleanAlias(aliases[r.name]);
       return html`<li className="prow" key=${r.name}>
         <div className="prow-top">
           <span className="pname"><i className="pdot" style=${{background:pColor(r.idx)}}></i><span>${alias||r.name}${alias && html` <span className="muted orig">${r.name}</span>`}</span></span>
           <span className="pnum mono"><span>${nf.format(r.count)}</span><${Bubble}/><span className="ppct">${pct(r.count/total)}</span></span>
         </div>
         <div className="ptrack" aria-hidden="true"><span style=${{width:Math.max(3,r.count/max*100)+'%',background:pColor(r.idx)}}></span></div>
-        ${!editing && (phone || alias) && html`<button className="whois" onClick=${()=>edit(r)}>${alias?'Name ändern':'Wer ist das?'} <span aria-hidden="true">→</span></button>`}
-        ${editing && html`<form className="whois-form" onSubmit=${e=>{e.preventDefault(); setAlias(r.name, draft.trim()); setOpen(null);}}>
-          <label className="label" htmlFor=${'alias-'+r.idx}>Wer steckt hinter ${r.name}?</label>
-          <div className="whois-row">
-            <input id=${'alias-'+r.idx} className="field" autoFocus value=${draft} onInput=${e=>setDraft(e.target.value)} placeholder="Name eingeben" maxLength="40"/>
-            <button className="btn btn-ink" type="submit">Speichern</button>
-            <button className="linkbtn" type="button" onClick=${()=>setOpen(null)}>Abbrechen</button>
-          </div>
-          ${ex.length ? html`<div className="samples"><span className="label">Schreibt zum Beispiel</span>${ex.map((s,i)=>html`<q key=${i}>${s}</q>`)}</div>` : null}
-        </form>`}
+        ${isPhone(r.name) && !alias && html`<button className="whois" onClick=${()=>onWho(r.name)}>Wer ist das? <span aria-hidden="true">→</span></button>`}
       </li>`; })}
     </ul>
     ${rows.length>30 && html`<div><button className="linkbtn" onClick=${()=>setAll(!all)}>${all?'Weniger anzeigen':`Alle ${rows.length} anzeigen`}</button></div>`}
-    <p className="muted" style=${{fontSize:'.85rem'}}>Namen, die du hier vergibst, bleiben in deinem Browser und gelten für die ganze Auswertung. Gibst du zwei Einträgen denselben Namen, werden sie zusammengelegt.</p>
+  </div>`;
+}
+
+function NameCleanup({rows, msgs, aliases, setAlias, focus}){
+  const [all,setAll] = useState(false);
+  const focusIdx = focus ? rows.findIndex(r=>r.name===focus) : -1;
+  const shown = (all || focusIdx>=60) ? rows : rows.slice(0,60);
+  const sample = n => { const m = msgs.filter(x=>x.name===n && !MEDIA_RE.test(x.text) && !DELETED_RE.test(x.text) && x.text.length>12).slice(-40).sort((a,b)=>b.text.length-a.text.length)[0]; return m ? m.text.replace(/\n/g,' ').slice(0,110) : null; };
+  return html`<div style=${{display:'grid',gap:10}}>
+    <ul className="nlist">${shown.map(r=>{
+      const phone = isPhone(r.name), alias = aliases[r.name], shownName = cleanAlias(alias) || (phone ? '' : r.name);
+      const id = 'name-'+r.idx;
+      const ex = phone && !cleanAlias(alias) ? sample(r.name) : null;
+      return html`<li className="nrow" key=${r.name}>
+        <span className="avatar" style=${{background:pColor(r.idx)}} aria-hidden="true">${shownName ? [...shownName][0].toUpperCase() : html`<${PersonIcon}/>`}</span>
+        <div className="nfield">
+          <label className="sr" htmlFor=${id}>Name für ${r.name}</label>
+          <input id=${id} className="field" value=${alias!=null ? alias : (phone?'':r.name)} placeholder=${phone?'Vorname':r.name} maxLength="40" autoFocus=${focus===r.name}
+            onInput=${e=>setAlias(r.name, e.target.value)}/>
+          ${(phone || (cleanAlias(alias) && cleanAlias(alias)!==r.name)) && html`<small className="muted">${r.name}${ex ? html` · <q>${ex}</q>` : null}</small>`}
+        </div>
+      </li>`; })}
+    </ul>
+    ${rows.length>60 && html`<div><button className="linkbtn" onClick=${()=>setAll(!all)}>${all?'Weniger anzeigen':`Alle ${rows.length} anzeigen`}</button></div>`}
+    <p className="muted" style=${{fontSize:'.85rem'}}>Die Namen bleiben in deinem Browser. Gibst du zwei Einträgen denselben Namen, werden sie zusammengelegt.</p>
+  </div>`;
+}
+
+function LangPicker({lang, setLang, onDone}){
+  const known = LANGS.some(l=>l.n===lang);
+  const [other,setOther] = useState(!known && !!lang);
+  const [txt,setTxt] = useState(known ? '' : (lang||''));
+  return html`<div style=${{display:'grid',gap:12}}>
+    <div className="langs">
+      ${LANGS.map(l=>html`<button key=${l.c} className="lang" aria-pressed=${lang===l.n} onClick=${()=>{ setLang(l.n); setOther(false); onDone(); }}>
+        <span className="lang-c mono">${l.c}</span><span>${l.n}</span></button>`)}
+      <button className="lang lang-other" aria-pressed=${other} onClick=${()=>setOther(true)}><span className="lang-c"><${Globe}/></span><span>Andere</span></button>
+    </div>
+    ${other && html`<form className="whois-row" onSubmit=${e=>{e.preventDefault(); if (txt.trim()){ setLang(txt.trim()); onDone(); }}}>
+      <label className="sr" htmlFor="lang-other">Andere Sprache</label>
+      <input id="lang-other" className="field" autoFocus value=${txt} onInput=${e=>setTxt(e.target.value)} placeholder="z. B. Schwedisch" maxLength="30"/>
+      <button className="btn btn-ink" type="submit" disabled=${!txt.trim()}>Übernehmen</button>
+    </form>`}
+  </div>`;
+}
+
+function CreateStep({title, a, kind, lang, tone, setTone, sampleAvail, onCreate}){
+  const k = kindById(kind);
+  return html`<div style=${{display:'grid',gap:20}}>
+    <div className="summary-card">
+      <div><span className="muted">Chat</span><b>${title}</b></div>
+      <div><span className="muted">Umfang</span><b>${nf.format(a.total)} Nachrichten · ${a.persons.length} ${a.persons.length===1?'Person':'Personen'}</b></div>
+      ${k && html`<div><span className="muted">Art</span><b>${k.icon} ${k.label}</b></div>`}
+      <div><span className="muted">Sprache</span><b>${lang}</b></div>
+    </div>
+    ${sampleAvail!==false && html`<div style=${{display:'grid',gap:8}}>
+      <div className="label">Wie soll Chatlupe klingen?</div>
+      <div className="tones light"><${ToneButtons} tone=${tone} setTone=${setTone}/></div>
+    </div>`}
+    <div className="create-wrap"><button className="btn-create" onClick=${onCreate}><${Sparkle}/> Meinen Report erstellen</button></div>
+    <p className="muted" style=${{fontSize:'.85rem'}}>${sampleAvail===false
+      ? 'Das KI-Fazit ist in dieser Version nicht eingerichtet. Du bekommst die komplette Statistik.'
+      : 'Beim Tippen gehen die Statistik und ein Ausschnitt von rund 220 Nachrichten an Claude, damit das Fazit geschrieben werden kann. Die Statistik selbst bleibt in deinem Browser.'}</p>
   </div>`;
 }
 
@@ -336,15 +390,30 @@ function Facts({a}){
   </div>`;
 }
 
-function Finish({a, title, kind, aiState, setAiState, sampleAvail, sampleRef}){
+function ReportView({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
   const [copied,setCopied] = useState(null);
   async function copy(){
-    const txt = summaryText(a,title, aiState&&aiState.status==='done'?aiState.data:null);
+    const txt = summaryText(a,title, ai&&ai.status==='done'?ai.data:null);
     try{ await navigator.clipboard.writeText(txt); setCopied('ok'); setTimeout(()=>setCopied(null),2200); }
     catch(e){ setCopied(txt); }
   }
-  return html`<div style=${{display:'grid',gap:18}}>
-    <${AiPanel} a=${a} title=${title} kind=${kind} aiState=${aiState} setAiState=${setAiState} sampleAvail=${sampleAvail} sampleRef=${sampleRef}/>
+  return html`<div className="report">
+    <${Facts} a=${a}/>
+    <${AiPanel} a=${a} st=${ai} tone=${tone} setTone=${setTone} onRun=${onRun} onStop=${onStop} sampleAvail=${sampleAvail}/>
+    <div className="grid2">
+      <${Investment} a=${a}/>
+      <${Change} a=${a}/>
+    </div>
+    <${People} a=${a}/>
+    <div className="panel">
+      <div className="label">Nachrichten pro Monat</div>
+      <${MonthChart} a=${a}/>
+      <div className="legend">${a.persons.slice(0,6).map(p=>html`<span key=${p.name}><i className="dot" style=${{background:pColor(p.idx)}}></i>${p.name}</span>`)}</div>
+    </div>
+    <div className="grid2">
+      <div className="panel"><div className="label">Wann ihr schreibt</div><${HourChart} a=${a}/></div>
+      <${Highlights} a=${a}/>
+    </div>
     <div style=${{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
       <button className="btn btn-ink" onClick=${copy}>Zusammenfassung kopieren</button>
       ${copied==='ok' && html`<span className="muted">Kopiert. Ab in die Gruppe damit.</span>`}
@@ -369,9 +438,9 @@ function Home({onStart, demos, onDemo}){
       </div>
     </section>
     <section className="block">
-      <h2>In 7 Schritten zum Fazit</h2>
-      <ol className="steps mini">${STEPS.map(s=>html`<li key=${s.t}><b>${s.t}</b></li>`)}</ol>
-      <p className="privacy">Die Auswertung läuft komplett in deinem Browser. Nur wenn du am Ende ein KI-Fazit anforderst, gehen Statistik und ein Ausschnitt von rund 220 Nachrichten an Claude.</p>
+      <h2>In 7 Schritten zum Report</h2>
+      <ol className="steps mini">${STEPS.map(s=>html`<li key=${s.t}><b>${s.t.replace('In welcher Sprache soll dein Report sein?','Sprache wählen')}</b></li>`)}</ol>
+      <p className="privacy">Die Auswertung läuft komplett in deinem Browser. Nur wenn du am Ende den Report mit KI-Fazit erstellst, gehen Statistik und ein Ausschnitt von rund 220 Nachrichten an Claude.</p>
     </section>
     <footer>
       <span><b style=${{color:'var(--ink)'}}>Chatlupe</b> · Statistik im Browser, Fazit von Claude</span>
@@ -388,36 +457,65 @@ function App(){
   const [chat,setChat] = useState(null);
   const [aliases,setAliases] = useState({});
   const [name,setName] = useState('');
+  const [lang,setLang] = useState('Deutsch');
+  const [tone,setTone] = useState('ehrlich');
+  const [focus,setFocus] = useState(null);
   const [ai,setAi] = useState(null);
   const [sampleAvail,setSampleAvail] = useState(null);
   const sampleRef = useRef(null);
+  const ctl = useRef(null);
   useEffect(()=>{ let alive=true; (async()=>{
     let s=null; try{ s = await getAi(); }catch(e){ s=null; }
     if(!alive) return; sampleRef.current=s; setSampleAvail(!!s);
   })(); return ()=>{alive=false}; },[]);
   useEffect(()=>{ window.scrollTo(0,0); },[step,view]);
 
-  const msgs = useMemo(()=> chat ? chat.msgs.map(m=> aliases[m.name] ? {...m, name:aliases[m.name]} : m) : null, [chat,aliases]);
-  const a = useMemo(()=> msgs && msgs.length ? analyze(msgs) : null, [msgs]);
-  useEffect(()=>{ setAi(null); },[chat,aliases,kind]);
+  const cur = view==='flow' ? Math.min(step, chat ? 8 : 3) : 0;
+  const rows = useRows(chat ? chat.msgs : []);
+  const needA = cur>=7;
+  const a = useMemo(()=>{
+    if (!needA || !chat) return null;
+    return analyze(chat.msgs.map(m=>{ const v=cleanAlias(aliases[m.name]); return v ? {...m, name:v} : m; }));
+  }, [needA, chat, aliases]);
+  useEffect(()=>{ if (ctl.current) ctl.current.abort(); setAi(null); },[chat,aliases,kind,lang]);
   const title = name.trim() || (chat && chat.title) || 'Dein Chat';
 
+  async function runAi(t){
+    const s = sampleRef.current; if (!s || !a) return;
+    if (ctl.current) ctl.current.abort();
+    const c = new AbortController(); ctl.current = c;
+    setAi({status:'loading'});
+    try{
+      const res = await s.json(buildPrompt(a,t,title,kind,lang), {signal:c.signal});
+      if (!res || typeof res!=='object' || !res.fazit) throw {code:'invalid_json'};
+      if (ctl.current===c) setAi({status:'done', data:res, tone:t});
+    }catch(e){
+      if (ctl.current!==c) return;
+      const code = e && e.code;
+      const text = code in AI_ERRORS ? AI_ERRORS[code] : 'Verbindung unterbrochen. Tipp nochmal auf den Knopf.';
+      setAi(text ? {status:'error', msg:text, hide: code==='not_granted'||code==='sampling_disabled'} : {status:'idle'});
+    }
+  }
+
   function start(){ setView('flow'); setStep(1); }
-  function loadChat(m, t){ setChat({msgs:m, title:t, isDemo:false, stamp:Date.now()}); setAliases({}); setName(t); setStep(4); }
+  function loadChat(m, t){ setChat({msgs:m, title:t, isDemo:false, stamp:Date.now()}); setAliases({}); setName(t); setFocus(null); setStep(4); }
   function openDemo(d){
     setChat({msgs:d.msgs, title:d.title, tag:d.tag, isDemo:true, demoId:d.id, stamp:Date.now()});
-    setAliases({}); setName(d.title); setKind(k=>k||DEMO_KIND[d.id]); setView('flow'); setStep(4);
+    setAliases({}); setName(d.title); setFocus(null); setKind(k=>k||DEMO_KIND[d.id]); setView('flow'); setStep(4);
   }
-  function setAlias(orig, val){ setAliases(o=>{ const n={...o}; if (val && val!==orig) n[orig]=val; else delete n[orig]; return n; }); }
-  function back(){ if (step>1) setStep(step-1); else setView('home'); }
-  function restart(){ setChat(null); setAliases({}); setName(''); setKind(null); setStep(1); }
+  function setAlias(orig, val){ setAliases(o=>({...o, [orig]:val})); }
+  function back(){ if (cur>1) setStep(cur-1); else setView('home'); }
+  function restart(){ setChat(null); setAliases({}); setName(''); setKind(null); setFocus(null); setStep(1); }
+  function create(){ setStep(8); if (sampleRef.current) runAi(tone); }
 
   if (view==='home') return html`<${Home} onStart=${start} demos=${demos} onDemo=${openDemo}/>`;
 
-  const cur = Math.min(step, a ? 7 : 3);
-  const meta = STEPS[cur-1];
   const k = kindById(kind);
-  let body, next = null;
+  const wide = cur===8;
+  let head, body, next = null;
+  if (cur===8){
+    head = {t:title, s:'Dein Report. Alles, was Chatlupe in eurem Chat gefunden hat.'};
+  } else head = STEPS[cur-1];
   if (cur===1){
     body = html`<${KindPicker} selected=${kind} onPick=${id=>{ setKind(id); setStep(2); }}/>`;
     if (kind) next = {label:'Weiter', go:2};
@@ -431,57 +529,44 @@ function App(){
     body = html`<div style=${{display:'grid',gap:22}}>
       <label className="namefield">
         <span className="sr">Name des Chats</span>
-        <input value=${name} onInput=${e=>setName(e.target.value)} placeholder=${a.persons.length>2?'Name der Gruppe …':'Name des Chats …'} maxLength="60"/>
+        <input value=${name} onInput=${e=>setName(e.target.value)} placeholder=${rows.length>2?'Name der Gruppe …':'Name des Chats …'} maxLength="60"/>
         <${Pencil}/>
       </label>
-      <${Participants} msgs=${chat.msgs} aliases=${aliases} setAlias=${setAlias}/>
+      <${Participants} rows=${rows} total=${chat.msgs.length} aliases=${aliases} onWho=${n=>{ setFocus(n); setStep(5); }}/>
     </div>`;
-    next = {label:'Auswerten', go:5};
+    next = {label:'Weiter', go:5};
   } else if (cur===5){
-    body = html`<div style=${{display:'grid',gap:18}}>
-      <${Facts} a=${a}/>
-      <${Investment} a=${a}/>
-      <${People} a=${a}/>
-    </div>`;
+    body = html`<${NameCleanup} rows=${rows} msgs=${chat.msgs} aliases=${aliases} setAlias=${setAlias} focus=${focus}/>`;
     next = {label:'Weiter', go:6};
   } else if (cur===6){
-    body = html`<div style=${{display:'grid',gap:18}}>
-      <${Change} a=${a}/>
-      <div className="panel">
-        <div className="label">Nachrichten pro Monat</div>
-        <${MonthChart} a=${a}/>
-        <div className="legend">${a.persons.slice(0,6).map(p=>html`<span key=${p.name}><i className="dot" style=${{background:pColor(p.idx)}}></i>${p.name}</span>`)}</div>
-      </div>
-      <div className="grid2">
-        <div className="panel"><div className="label">Wann ihr schreibt</div><${HourChart} a=${a}/></div>
-        <${Highlights} a=${a}/>
-      </div>
-    </div>`;
-    next = {label:'Zum Fazit', go:7};
+    body = html`<${LangPicker} lang=${lang} setLang=${setLang} onDone=${()=>setStep(7)}/>`;
+    next = {label:'Weiter', go:7};
+  } else if (cur===7){
+    body = html`<${CreateStep} title=${title} a=${a} kind=${kind} lang=${lang} tone=${tone} setTone=${setTone} sampleAvail=${sampleAvail} onCreate=${create}/>`;
   } else {
-    body = html`<${Finish} a=${a} title=${title} kind=${kind} aiState=${ai} setAiState=${setAi} sampleAvail=${sampleAvail} sampleRef=${sampleRef}/>`;
+    body = html`<${ReportView} a=${a} title=${title} ai=${ai} tone=${tone} setTone=${setTone} onRun=${runAi} onStop=${()=>ctl.current&&ctl.current.abort()} sampleAvail=${sampleAvail}/>`;
   }
 
   return html`<div className="flow">
-    <div className="flowbar"><div className=${'flowbar-in'+(cur>=5?' wide':'')}>
+    <div className="flowbar"><div className=${'flowbar-in'+(wide?' wide':'')}>
       <button className="iconbtn" aria-label=${cur===1?'Zur Startseite':'Zurück'} onClick=${back}><${ArrowLeft}/></button>
-      <div className="progress" role="progressbar" aria-label="Fortschritt" aria-valuemin="1" aria-valuemax="7" aria-valuenow=${cur}><span style=${{width:(cur/7*100)+'%'}}></span></div>
-      <span className="stepcount">${cur} von 7</span>
+      <div className="progress" role="progressbar" aria-label="Fortschritt" aria-valuemin="1" aria-valuemax="7" aria-valuenow=${Math.min(cur,7)}><span style=${{width:(Math.min(cur,7)/7*100)+'%'}}></span></div>
+      <span className="stepcount">${cur===8 ? 'Fertig' : `${cur} von 7`}</span>
     </div></div>
-    <main className=${'flow-body'+(cur>=5?' wide':'')}>
+    <main className=${'flow-body'+(wide?' wide':'')}>
       <div className="step-head">
         ${cur>=4 && html`<div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
           ${chat.isDemo && html`<span className="chip example">Beispielchat, frei erfunden</span>`}
           ${k && html`<span className="chip">${k.icon} ${k.label}</span>`}
         </div>`}
-        <h2>${cur>=5 ? (cur===5 ? title : meta.t) : meta.t}</h2>
-        ${cur===5 ? html`<p className="muted">Wer schreibt, wer meldet sich zuerst, wer lässt auf sich warten.</p>` : meta.s && html`<p className="muted">${meta.s}</p>`}
+        <h2>${head.t}</h2>
+        ${head.s && html`<p className="muted">${head.s}</p>`}
       </div>
       ${body}
       <div className="flow-nav">
         ${next && html`<button className="btn btn-mark btn-lg" onClick=${()=>setStep(next.go)}>${next.label} <span aria-hidden="true">→</span></button>`}
-        ${cur===7 && html`<button className="btn btn-ink" onClick=${restart}>Neuen Chat auswerten</button>`}
-        ${cur===7 && html`<button className="btn btn-ghost" onClick=${()=>setView('home')}>Zur Startseite</button>`}
+        ${cur===8 && html`<button className="btn btn-ink" onClick=${restart}>Neuen Chat auswerten</button>`}
+        ${cur===8 && html`<button className="btn btn-ghost" onClick=${()=>setView('home')}>Zur Startseite</button>`}
       </div>
     </main>
   </div>`;

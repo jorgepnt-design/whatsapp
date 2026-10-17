@@ -7,7 +7,7 @@ export const TONES = {
   liebevoll:{label:'Liebevoll', desc:'warm, wohlwollend und ermutigend'},
   frech:{label:'Frech', desc:'frech und spitz wie eine gute Freundin, die kein Blatt vor den Mund nimmt, aber nie verletzend: keine Beleidigungen, nichts über Aussehen oder Gesundheit'}
 };
-export function buildPrompt(a, tone, title, kind){
+export function buildPrompt(a, tone, title, kind, lang='Deutsch'){
   const k = kindById(kind);
   const people = a.persons.slice(0,6).map(p=>({
     name:p.name, nachrichten:p.msgs, anteil:pct(p.msgs/a.total), woerterProNachricht:+p.wpm.toFixed(1),
@@ -26,7 +26,7 @@ export function buildPrompt(a, tone, title, kind){
   const names = people.map(p=>p.name).join(', ');
   return `Du bist Chatlupe, eine scharfsinnige Beobachterin von Chatverläufen. Lies die Statistiken und den Ausschnitt eines WhatsApp-Chats und sag der Person, die ihn hochgeladen hat, was du wirklich darüber denkst.
 
-${k ? `Art des Chats laut Nutzer: ${k.label} (${k.hint}). Deute Rollen und Dynamik passend dazu.\n\n` : ''}Ton: ${TONES[tone].desc}. Schreib auf Deutsch und duze. Stütze jede Aussage auf die Zahlen oder den Ausschnitt, erfinde nichts. Keine Diagnosen, keine Ratschläge zu Trennung oder Ähnlichem als Tatsache formuliert.
+${k ? `Art des Chats laut Nutzer: ${k.label} (${k.hint}). Deute Rollen und Dynamik passend dazu.\n\n` : ''}Ton: ${TONES[tone].desc}. Schreib den gesamten Text auf ${lang} und sprich die Person locker und direkt an (auf Deutsch: duzen). Namen bleiben unverändert. Stütze jede Aussage auf die Zahlen oder den Ausschnitt, erfinde nichts. Keine Diagnosen, keine Ratschläge zu Trennung oder Ähnlichem als Tatsache formuliert.
 
 STATISTIKEN (JSON):
 ${JSON.stringify(stats)}
