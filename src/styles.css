@@ -262,3 +262,17 @@ pre.copyfallback{white-space:pre-wrap;background:var(--bg);border:1px solid var(
 .pw-price{font-family:var(--f-display);font-size:1.5rem;white-space:nowrap}
 .pw-list{margin:0;padding-left:1.2em;display:grid;gap:6px}
 .pw-buttons{min-height:52px;position:relative;z-index:0}
+.consent{display:flex;gap:10px;align-items:flex-start;font-size:.9rem;line-height:1.45;cursor:pointer}
+.consent input{flex:none;width:20px;height:20px;margin-top:1px;accent-color:var(--p0)}
+.legal-links{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.85rem;padding-block:10px}
+.legal-links a,.privacy a,.paywall a{color:var(--muted);text-underline-offset:3px}
+.legal{padding-bottom:40px}
+.legal-h{margin-bottom:10px}
+.legal-body{display:grid;gap:10px;max-width:72ch}
+.legal-body h2{font-family:var(--f-body);font-size:1.1rem;font-weight:700;margin-top:18px}
+.legal-body p,.legal-body li{line-height:1.65}
+.legal-body ul{margin:0;padding-left:1.2em;display:grid;gap:6px}
+.legal-body a{color:var(--p0)}
+.formbox{border:1px dashed var(--line);border-radius:12px;padding:14px;display:grid;gap:10px;background:var(--surface)}
+mark.ph{background:var(--mark);color:var(--mark-ink);padding:0 .25em;border-radius:4px}
+.ph-note{background:var(--mark);color:var(--mark-ink);border-radius:12px;padding:10px 14px;font-weight:600;font-size:.9rem;max-width:72ch}

@@ -2,6 +2,16 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import htm from 'htm';
 import JSZip from 'jszip';
+import '@fontsource/unbounded/500.css';
+import '@fontsource/unbounded/700.css';
+import '@fontsource/figtree/400.css';
+import '@fontsource/figtree/500.css';
+import '@fontsource/figtree/600.css';
+import '@fontsource/figtree/700.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/600.css';
+import '@fontsource/fraunces/500.css';
+import '@fontsource/fraunces/600.css';
 import './styles.css';
 import './kinds.css';
 import { parseChat, MEDIA_RE, DELETED_RE } from './parser.js';
@@ -11,6 +21,7 @@ import { SCENARIOS, makeDemo } from './demos.js';
 import { TONES, buildPrompt } from './prompt.js';
 import { getAi } from './ai.js';
 import { KINDS, kindById } from './kinds.js';
+import { LegalPage, LegalLinks, LEGAL_PAGES } from './legal.js';
 
 const html = htm.bind(React.createElement);
 const DEMO_KIND = { 'lea-tim':'liebe', familie:'familie', wg:'anderes' };
@@ -246,7 +257,7 @@ function UploadStep({onChat, chat, demos, onDemo}){
       </div>`}
       ${err && html`<p className="err" role="alert">${err}</p>`}
       ${chat && !err && html`<p className="ok-line">Geladen: <b>${chat.title || 'Dein Chat'}</b> · ${nf.format(chat.msgs.length)} Nachrichten${chat.isDemo?' (Beispiel)':''}</p>`}
-      <p className="privacy">Die Auswertung läuft komplett in deinem Browser. Deine Datei wird nirgends hochgeladen oder gespeichert. Nur wenn du am Ende den Report mit KI-Fazit erstellst, gehen Statistik und ein Ausschnitt an Claude.</p>
+      <p className="privacy">Die Auswertung läuft komplett in deinem Browser. Deine Datei wird nirgends hochgeladen oder gespeichert. Nur wenn du am Ende den Report mit KI-Fazit erstellst, gehen Statistik und ein Ausschnitt an Claude. Lade nur Chats hoch, an denen du selbst teilgenommen hast. <a href="#datenschutz">Datenschutz</a></p>
     </div>
     <div className="demos" role="group" aria-label="Beispielchats">
       <span className="label" style=${{marginRight:4}}>Kein Export zur Hand? Beispiel nehmen</span>
@@ -613,6 +624,10 @@ function Paywall({cfg, onPaid}){
   const box = useRef(null);
   const [state,setState] = useState('loading');
   const [msg,setMsg] = useState('');
+  const [consent,setConsent] = useState(false);
+  const consentRef = useRef(false);
+  const actionsRef = useRef(null);
+  useEffect(()=>{ consentRef.current = consent; const ac = actionsRef.current; if (ac) (consent ? ac.enable() : ac.disable()); if (consent) setMsg(''); },[consent]);
   useEffect(()=>{
     if (!cfg.ready || !cfg.clientId) { setState('off'); return; }
     let alive = true, buttons = null;
@@ -620,7 +635,10 @@ function Paywall({cfg, onPaid}){
       if (!alive || !box.current) return;
       buttons = pp.Buttons({
         style:{ layout:'vertical', shape:'rect', color:'gold', label:'pay', height:48 },
+        onInit: (data, actions)=>{ actionsRef.current = actions; consentRef.current ? actions.enable() : actions.disable(); },
+        onClick: ()=>{ if (!consentRef.current) setMsg('Bitte bestätige zuerst das Kästchen oben.'); },
         createOrder: async ()=>{
+          if (!consentRef.current) throw new Error('consent');
           setMsg('');
           const r = await fetch('/api/paypal-order', { method:'POST' });
           const d = await r.json().catch(()=>({}));
@@ -653,6 +671,13 @@ function Paywall({cfg, onPaid}){
       : state==='error' ? html`<p className="err">PayPal ließ sich nicht laden. Prüf deine Verbindung oder einen Werbeblocker und lade die Seite neu.</p>`
       : state==='verifying' ? html`<div className="thinking dark"><i></i><i></i><i></i><span>Zahlung wird bestätigt…</span></div>`
       : state==='paid' ? html`<p className="ok-line">Bezahlt. Dein Report wird geschrieben.</p>` : null}
+    ${state!=='off' && state!=='paid' && html`<div style=${{display:'grid',gap:6}}>
+      <label className="consent">
+        <input type="checkbox" checked=${consent} onChange=${e=>setConsent(e.target.checked)}/>
+        <span>Ich stimme ausdrücklich zu, dass Chatlupe vor Ablauf der Widerrufsfrist mit der Erstellung meines Reports beginnt. Mir ist bekannt, dass ich dadurch mein Widerrufsrecht verliere.</span>
+      </label>
+      <p className="muted small">Es gelten die <a href="#agb">AGB</a>, die <a href="#widerruf">Widerrufsbelehrung</a> und die <a href="#datenschutz">Datenschutzerklärung</a>.</p>
+    </div>`}
     <div ref=${box} className="pw-buttons" hidden=${state==='off'||state==='error'||state==='paid'||state==='verifying'}></div>
     ${state==='loading' && html`<p className="muted small">PayPal wird geladen…</p>`}
     ${msg && html`<p className="err">${msg}</p>`}
@@ -755,6 +780,7 @@ function Home({onStart, demos, onDemo}){
     <footer>
       <span><b style=${{color:'var(--ink)'}}>Chatlupe</b> · Statistik im Browser, Fazit von Claude</span>
       <span>Die Beispielchats und alle Namen darin sind erfunden.</span>
+      <${LegalLinks}/>
     </footer>
   </div>`;
 }
@@ -773,6 +799,10 @@ function App(){
   const [rstep,setRstep] = useState(1);
   const [payCfg,setPayCfg] = useState(null);
   const [payToken,setPayToken] = useState(null);
+  const readLegal = () => { const h = location.hash.slice(1); return LEGAL_PAGES[h] ? h : null; };
+  const [legal,setLegal] = useState(readLegal);
+  useEffect(()=>{ const on = ()=>setLegal(readLegal()); window.addEventListener('hashchange', on); return ()=>window.removeEventListener('hashchange', on); },[]);
+  useEffect(()=>{ window.scrollTo(0,0); },[legal]);
   const [ai,setAi] = useState(null);
   const [sampleAvail,setSampleAvail] = useState(null);
   const sampleRef = useRef(null);
@@ -827,6 +857,7 @@ function App(){
   function create(){ setRstep(1); setStep(8); if (sampleRef.current && !needPay) runAi(tone); }
   function onPaid(tok){ setPayToken(tok); runAi(tone, tok); }
 
+  if (legal) return html`<${LegalPage} page=${legal} onBack=${()=>{ history.replaceState(null,'',location.pathname+location.search); setLegal(null); }}/>`;
   if (view==='home') return html`<${Home} onStart=${start} demos=${demos} onDemo=${openDemo}/>`;
 
   const k = kindById(kind);
@@ -888,6 +919,7 @@ function App(){
         ${cur===8 && rstep===8 && html`<button className="btn btn-ink" onClick=${restart}>Neuen Chat auswerten</button>`}
         ${cur===8 && rstep===8 && html`<button className="btn btn-ghost" onClick=${()=>setView('home')}>Zur Startseite</button>`}
       </div>
+      <${LegalLinks}/>
     </main>
   </div>`;
 }
