@@ -6,9 +6,6 @@ const html = htm.bind(React.createElement);
 // Angaben des Betreibers. Leere Felder erscheinen auf den Seiten als markierter Platzhalter.
 export const OPERATOR = {
   name: 'Jorge Pinto', // Vor- und Nachname (bzw. Firma mit Rechtsform und Vertretungsberechtigtem)
-  street: 'Heidelberger Landstr. 247', // Straße und Hausnummer (keine Postfachadresse)
-  city: '64297 Darmstadt', // PLZ und Ort
-  country: 'Deutschland',
   email: 'jorgepnt@web.de', // E-Mail-Adresse für Kontakt
   phone: '',           // optional
   updated: 'Oktober 2026'
@@ -21,14 +18,14 @@ export const LEGAL_PAGES = {
 
 const O = OPERATOR;
 const F = (v, label) => v ? v : html`<mark className="ph">[${label}]</mark>`;
-const Address = () => html`<p>${F(O.name,'Vor- und Nachname')}<br/>${F(O.street,'Straße und Hausnummer')}<br/>${F(O.city,'PLZ und Ort')}<br/>${O.country}</p>`;
+const Address = () => html`<p>${F(O.name,'Vor- und Nachname')}</p>`;
 const Email = () => O.email ? html`<a href=${'mailto:'+O.email}>${O.email}</a>` : F('', 'E-Mail-Adresse');
 
 function Terms(){
   return html`<div>
     <p className="muted">Stand: ${O.updated}</p>
     <h2>1. Anbieter und Geltungsbereich</h2>
-    <p>Diese Bedingungen gelten für die Nutzung der Website Chatlupe, die von ${F(O.name,'Vor- und Nachname')}, ${F(O.street,'Straße und Hausnummer')}, ${F(O.city,'PLZ und Ort')} (im Folgenden „wir“) betrieben wird.</p>
+    <p>Diese Bedingungen gelten für die Nutzung der Website Chatlupe, die von ${F(O.name,'Vor- und Nachname')} (im Folgenden „wir“) betrieben wird. Kontakt: <${Email}/>.</p>
     <h2>2. Leistungen</h2>
     <p>Chatlupe wertet einen von dir hochgeladenen WhatsApp-Export statistisch aus. Diese Auswertung läuft vollständig in deinem Browser. Auf Wunsch schreibt eine KI (Claude von Anthropic) anschließend einen Report über deinen Chat. Die Nutzung ist kostenlos.</p>
     <p>Die Reports dienen der Unterhaltung. Sie sind keine psychologische, therapeutische oder rechtliche Beratung. Eine KI kann sich irren, Dinge falsch deuten oder überspitzen. Die Reports werden automatisch erzeugt und geben keine Meinung des Betreibers wieder.</p>
@@ -80,7 +77,7 @@ const CONTENT = { agb:Terms, datenschutz:Datenschutz };
 
 export function LegalPage({page, onBack}){
   const Body = CONTENT[page];
-  const missing = !O.name || !O.street || !O.city || !O.email;
+  const missing = !O.name || !O.email;
   return html`<div className="wrap legal">
     <header className="top"><button className="btn btn-ghost" onClick=${onBack}>← Zurück</button></header>
     <h1 className="legal-h">${LEGAL_PAGES[page]}</h1>
