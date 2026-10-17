@@ -268,3 +268,9 @@ mark.ph{background:var(--mark);color:var(--mark-ink);padding:0 .25em;border-radi
 .ph-note{background:var(--mark);color:var(--mark-ink);border-radius:12px;padding:10px 14px;font-weight:600;font-size:.9rem;max-width:72ch}
 .pdf-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .btn-share[disabled]{opacity:.55;cursor:wait}
+.contact{display:grid;gap:14px;max-width:560px}
+.contact label{display:grid;gap:6px;font-weight:600;font-size:.95rem}
+.contact label .muted{font-weight:400;font-size:.85rem}
+.contact textarea.field{resize:vertical;font:inherit}
+.contact .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.contact-ok{border:1px solid var(--line);border-left:4px solid var(--good);border-radius:12px;padding:14px 18px;background:var(--surface);display:grid;gap:4px;max-width:560px}
