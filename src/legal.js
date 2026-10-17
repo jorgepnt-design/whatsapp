@@ -9,7 +9,7 @@ export const OPERATOR = {
   street: 'Heidelberger Landstr. 247', // Straße und Hausnummer (keine Postfachadresse)
   city: '64297 Darmstadt', // PLZ und Ort
   country: 'Deutschland',
-  email: 'jorgepnt@gmail.com', // E-Mail-Adresse für Kontakt und Widerruf
+  email: 'jorgepnt@web.de', // E-Mail-Adresse für Kontakt und Widerruf
   phone: '',           // optional
   vatId: '',           // USt-IdNr., falls vorhanden
   smallBusiness: true, // Kleinunternehmer nach § 19 UStG (keine Umsatzsteuer im Preis)
