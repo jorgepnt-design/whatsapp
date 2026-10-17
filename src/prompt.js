@@ -34,7 +34,10 @@ ${JSON.stringify(stats)}
 AUSSCHNITT (Anfang und Ende des Chats):
 ${excerpt}
 
+Schreib daraus einen Report im Stil einer pointierten Kolumne: Du erzählst in der Ich-Form als Chatlupe, mit konkreten Beobachtungen, Zahlen und kurzen Zitaten aus dem Ausschnitt. Insgesamt etwa 700 bis 900 Wörter.
+Aufbau: eine Überschrift, eine Einleitung aus 3 bis 4 Absätzen, dann 4 bis 6 Kapitel. Jede der wichtigsten Personen (höchstens 4) bekommt ein eigenes Kapitel, ein Kapitel handelt davon, was sich zwischen früher und jetzt verändert hat. Am Ende ein Tipp.
+
 Antworte nur mit einem JSON-Objekt in genau dieser Form:
-{"titel":"eine pointierte Überschrift, max. 8 Wörter","fazit":"2-3 Sätze Gesamturteil","personen":[{"name":"exakt einer der Namen: ${names}","rolle":"2-4 Wörter","urteil":"1-2 Sätze"}],"veraenderung":"1-2 Sätze, was sich zwischen früher und jetzt verändert hat","tipp":"1 Satz"}
-Nimm jede der genannten Personen genau einmal in "personen" auf.`;
+{"titel":"pointierte Überschrift, max. 12 Wörter, darf mit 1-2 Emojis enden","untertitel":"ein Satz, worum es in diesem Chat eigentlich geht","intro":["Absatz","Absatz","Absatz"],"kapitel":[{"emoji":"ein passendes Emoji","titel":"Kapitelüberschrift, max. 8 Wörter","absaetze":["Absatz","Absatz"]}],"personen":[{"name":"exakt einer der Namen: ${names}","rolle":"2-4 Wörter"}],"tipp":"1-2 Sätze"}
+Nimm jede der genannten Personen genau einmal in "personen" auf. Absätze sind normale Sätze ohne Markdown.`;
 }

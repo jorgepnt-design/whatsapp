@@ -129,36 +129,6 @@ function ToneButtons({tone, setTone}){
   return html`<div className="tones" role="group" aria-label="Ton wählen">${Object.entries(TONES).map(([k,v])=>html`<button key=${k} className="tone" aria-pressed=${tone===k} onClick=${()=>setTone(k)}>${v.label}</button>`)}</div>`;
 }
 
-function AiPanel({a, st, tone, setTone, onRun, onStop, sampleAvail}){
-  st = st || {status:'idle'};
-  if (sampleAvail===false || st.hide) return html`<div className="panel ai">
-    <div className="label">KI-Fazit</div>
-    <p>${st.hide ? st.msg : 'Das KI-Fazit ist in dieser Version nicht eingerichtet. Alle Zahlen unten funktionieren trotzdem.'}</p>
-  </div>`;
-  return html`<div className="panel ai" id="fazit">
-    <div className="label">Was Chatlupe wirklich denkt</div>
-    ${st.status==='done' ? html`
-      <p className="ai-title">${st.data.titel}</p>
-      <p style=${{fontSize:'1.05rem'}}>${st.data.fazit}</p>
-      ${Array.isArray(st.data.personen) && html`<div className="ai-people">${st.data.personen.map((p,i)=>{
-        const match = a.persons.find(x=>x.name===p.name);
-        return html`<div className="ai-person" key=${i}><b><i className="dot" style=${{background:pColor(match?match.idx:i)}}></i>${p.name} <em>${p.rolle}</em></b><span>${p.urteil}</span></div>`; })}</div>`}
-      ${st.data.veraenderung && html`<div><div className="label">Was sich verändert hat</div><p>${st.data.veraenderung}</p></div>`}
-      ${st.data.tipp && html`<div><div className="label">Tipp</div><p>${st.data.tipp}</p></div>`}
-      <div className="tones"><${ToneButtons} tone=${tone} setTone=${setTone}/><button className="btn btn-mark" onClick=${()=>onRun(tone)}>Neu bewerten</button></div>
-    ` : st.status==='loading' ? html`
-      <div className="thinking"><i></i><i></i><i></i><span>Chatlupe liest mit. Das dauert meist 20 bis 60 Sekunden.</span></div>
-      <div><button className="btn btn-ghost" style=${{color:'var(--bg)'}} onClick=${onStop}>Stopp</button></div>
-    ` : html`
-      <p>Lass Claude den Chat lesen und dir sagen, wer welche Rolle spielt und was sich verändert hat.</p>
-      <${ToneButtons} tone=${tone} setTone=${setTone}/>
-      <div><button className="btn btn-mark" onClick=${()=>onRun(tone)} disabled=${sampleAvail===null}>${sampleAvail===null?'Wird vorbereitet…':'KI-Fazit erstellen'}</button></div>
-      ${st.status==='error' && html`<p style=${{color:'var(--mark)'}}>${st.msg}</p>`}
-      <p className="muted" style=${{fontSize:'.82rem'}}>Beim Tippen gehen die Statistik und ein Ausschnitt von rund 220 Nachrichten an Claude. Vorher nichts.</p>
-    `}
-  </div>`;
-}
-
 const STEPS = [
   { t:'Was für ein Chat?', s:'Damit Chatlupe Rollen und Dynamik richtig deutet.' },
   { t:'Chat exportieren', s:'So holst du den Verlauf aus WhatsApp. Dauert eine Minute.' },
@@ -202,7 +172,7 @@ function summaryText(a, title, ai){
   lines.push('Wer investiert mehr: ' + top.map(p=>`${p.name} ${pct(p.invest)}`).join(' · '));
   top.forEach(p=>lines.push(`${p.name}: ${nf.format(p.msgs)} Nachrichten, antwortet im Schnitt nach ${fmtDur(p.medianReply)}, ${p.starters}× zuerst geschrieben`));
   lines.push(`Längste Funkstille: ${fmtDur(a.longest.gap)}`);
-  if (ai){ lines.push('', ai.titel||'', ai.fazit||''); }
+  if (ai){ lines.push('', ai.titel||'', ai.untertitel||''); if (ai.tipp) lines.push('Tipp: '+ai.tipp); }
   return lines.join('\n');
 }
 
@@ -396,8 +366,8 @@ const RSTEPS = [
   { t:'Euer Rhythmus.', s:null },
   { t:'Die längsten Nachrichten.', s:'Die ausführlichste Nachricht jeder Person.' },
   { t:'So fing alles an.', s:null },
-  { t:'Was sich verändert hat.', s:null },
-  { t:'Was Chatlupe denkt.', s:null }
+  { t:'Und hier endet es. Vorerst.', s:null },
+  { t:'Eure Wörter.', s:null }
 ];
 const MONTH_LETTERS = 'JFMAMJJASOND';
 const JUNK_RE = /\S{45,}/;
@@ -563,45 +533,133 @@ function FirstDay({a}){
   </${Card}>`;
 }
 
-function ChangeStep({a}){
+const STOPWORDS = new Set(('aber alle allem allen aller alles als also am an ander andere anderen auch auf aus bei beim bin bis bist bitte da dabei dafür dagegen daher damit dann darauf darum das dass dein deine deinem deinen deiner dem den denn der des dich die dies diese diesem diesen dieser dir doch dort du durch ein eine einem einen einer eines einfach er es etwas euch euer eure für gab ganz gar gibt gerade geht gut habe haben hab hast hat hatte hätte hier hin ich ihm ihn ihr ihre im immer in ist ja jetzt kann kannst kein keine man mal mehr mein meine meinem meinen mich mir mit muss nach nicht nichts noch nur ob oder ohne schon sehr sein seine sich sie sind so soll sollen sondern um und uns unser unsere unter viel vom von vor war waren warst was weil weiß wenn wer werde werden wie wieder will wir wird wo wohl zu zum zur über okay oki gerne heute morgen dann denn eben halt naja nee nein ach oh ah hm hmm haha hahaha hihi lol xd ok jaa jaja wieso warum weshalb also klar sicher ganz echt total voll schon wirklich vielleicht nochmal mehr weniger kurz lang gleich grad grade glaube denke finde sagen sagt gesagt machen macht gemacht mache kommt komme kommen geht gehen gehe sehen sieht wäre würde könnte könnt kannst müssen musst dir dich euch uns the and you that this for are was with have just not but what your all can get will its it’s dont don’t i’m im yes yeah medien ausgeschlossen weggelassen omitted media image video audio sticker nachricht gelöscht gelöschte bearbeitet null https http www com').split(' '));
+const WORD_RE = /[\p{L}][\p{L}'’-]{2,}/gu;
+
+function LastDay({a}){
+  const {day, list} = useMemo(()=>{
+    const msgs = a.msgs, last = [...msgs].reverse().find(m=>!isMedia(m)) || msgs[msgs.length-1];
+    const d = dayNum(last.t);
+    let list = msgs.filter(m=>dayNum(m.t)===d).slice(-8);
+    if (list.length<3) list = msgs.slice(-8);
+    return {day:last.t, list};
+  },[a]);
+  return html`<${Card} tint="var(--soft)" className="neutral" title=${fmtLong(day)}>
+    <div className="chatlog">${list.map((m,i)=>html`<${Bubble2} key=${i} m=${m} a=${a}/>`)}</div>
+  </${Card}>`;
+}
+
+function Words({a}){
+  const {words, emojis} = useMemo(()=>{
+    const names = new Set(a.persons.flatMap(p=>p.name.toLowerCase().split(/\s+/)));
+    const c = new Map();
+    for (const m of a.msgs){
+      if (isMedia(m) || DELETED_RE.test(m.text) || JUNK_RE.test(m.text)) continue;
+      for (const w of m.text.toLowerCase().replace(/https?:\S+/g,'').match(WORD_RE)||[]){
+        const k = w.replace(/['’-]+$/,'');
+        if (k.length<3 || STOPWORDS.has(k) || names.has(k)) continue;
+        c.set(k,(c.get(k)||0)+1);
+      }
+    }
+    const e = new Map();
+    for (const p of a.persons) for (const [k,n] of Object.entries(p.emojis)) e.set(k,(e.get(k)||0)+n);
+    return { words:[...c].sort((x,y)=>y[1]-x[1]).slice(0,10), emojis:[...e].sort((x,y)=>y[1]-x[1]).slice(0,8) };
+  },[a]);
   return html`<div style=${{display:'grid',gap:14}}>
-    <${Change} a=${a}/>
-    <div className="panel">
-      <div className="label">Nachrichten pro Monat</div>
-      <${MonthChart} a=${a}/>
-      <div className="legend">${a.persons.slice(0,6).map(p=>html`<span key=${p.name}><i className="dot" style=${{background:pColor(p.idx)}}></i>${p.name}</span>`)}</div>
-    </div>
+    <${Card} tint="var(--p0)" title="Häufigste Wörter">
+      ${words.length ? html`<ol className="wordlist">${words.map(([w,n],i)=>html`<li key=${w}><span className="mono muted rank">#${i+1}</span><b>${w}</b><span className="mono muted">${nf.format(n)}×</span></li>`)}</ol>`
+        : html`<p className="muted">Zu wenig Text für eine Wortliste.</p>`}
+    </${Card}>
+    <${Card} tint="var(--mark)" title="Häufigste Emojis">
+      ${emojis.length ? html`<div className="emojirow">${emojis.map(([e,n])=>html`<span key=${e} title=${nf.format(n)+'×'}>${e}<small className="mono">${nf.format(n)}</small></span>`)}</div>`
+        : html`<p className="muted">In diesem Chat wird nicht geemojit.</p>`}
+    </${Card}>
   </div>`;
 }
 
-function Closing({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
-  const [copied,setCopied] = useState(null);
-  async function copy(){
-    const txt = summaryText(a,title, ai&&ai.status==='done'?ai.data:null);
-    try{ await navigator.clipboard.writeText(txt); setCopied('ok'); setTimeout(()=>setCopied(null),2200); }
-    catch(e){ setCopied(txt); }
+function Details({a}){
+  return html`<details className="details">
+    <summary>Alle Zahlen im Detail</summary>
+    <div style=${{display:'grid',gap:16,paddingTop:14}}>
+      <div className="grid2"><${Investment} a=${a}/><${Change} a=${a}/></div>
+      <div className="panel">
+        <div className="label">Nachrichten pro Monat</div>
+        <${MonthChart} a=${a}/>
+        <div className="legend">${a.persons.slice(0,6).map(p=>html`<span key=${p.name}><i className="dot" style=${{background:pColor(p.idx)}}></i>${p.name}</span>`)}</div>
+      </div>
+      <${People} a=${a}/>
+    </div>
+  </details>`;
+}
+
+function Article({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
+  const [shared,setShared] = useState(null);
+  const st = ai || {status:'idle'};
+  const d = st.status==='done' ? st.data : null;
+  async function share(){
+    const txt = summaryText(a, title, d);
+    try{
+      if (navigator.share){ await navigator.share({title:'Chatlupe: '+title, text:txt}); return; }
+      await navigator.clipboard.writeText(txt); setShared('ok'); setTimeout(()=>setShared(null),2200);
+    }catch(e){ if (e && e.name==='AbortError') return; setShared(txt); }
   }
-  return html`<div style=${{display:'grid',gap:18}}>
-    <${AiPanel} a=${a} st=${ai} tone=${tone} setTone=${setTone} onRun=${onRun} onStop=${onStop} sampleAvail=${sampleAvail}/>
-    <div className="label">Alle Zahlen pro Person</div>
-    <${People} a=${a}/>
-    <div style=${{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
-      <button className="btn btn-ink" onClick=${copy}>Zusammenfassung kopieren</button>
-      ${copied==='ok' && html`<span className="muted">Kopiert. Ab in die Gruppe damit.</span>`}
-    </div>
-    ${copied && copied!=='ok' && html`<div><p className="muted">Kopieren ging hier nicht. Markiere den Text und kopiere ihn selbst:</p><pre className="copyfallback">${copied}</pre></div>`}
-  </div>`;
+  let body;
+  if (sampleAvail===false || st.hide){
+    body = html`<div className="a-note"><p>${st.hide ? st.msg : 'Der geschriebene Report ist in dieser Version nicht eingerichtet. Alle Zahlen findest du unten.'}</p></div>`;
+  } else if (st.status==='loading'){
+    body = html`<div className="a-note">
+      <div className="thinking dark"><i></i><i></i><i></i><span>Chatlupe schreibt deinen Report. Das dauert meist 30 bis 60 Sekunden.</span></div>
+      <div className="skel"><i></i><i></i><i style=${{width:'70%'}}></i></div>
+      <div><button className="btn btn-ghost" onClick=${onStop}>Abbrechen</button></div>
+    </div>`;
+  } else if (!d){
+    body = html`<div className="a-note">
+      <p>Lass Chatlupe den Chat lesen und dir einen ausführlichen Report schreiben: wer welche Rolle spielt und was sich verändert hat.</p>
+      <div className="tones light"><${ToneButtons} tone=${tone} setTone=${setTone}/></div>
+      <div><button className="btn btn-ink" onClick=${()=>onRun(tone)} disabled=${sampleAvail===null}>${sampleAvail===null?'Wird vorbereitet…':'Report schreiben lassen'}</button></div>
+      ${st.status==='error' && html`<p className="err">${st.msg}</p>`}
+      <p className="muted small">Beim Tippen gehen die Statistik und ein Ausschnitt von rund 220 Nachrichten an Claude. Vorher nichts.</p>
+    </div>`;
+  } else {
+    const roles = Array.isArray(d.personen) ? d.personen : [];
+    body = html`<div className="a-body">
+      ${(d.intro||[]).map((p,i)=>html`<p key=${'i'+i}>${p}</p>`)}
+      ${roles.length>0 && html`<div className="a-roles">${roles.map((r,i)=>{ const m=a.persons.find(x=>x.name===r.name); return html`<span key=${i} className="a-role"><i className="pdot" style=${{background:pColor(m?m.idx:i)}}></i><b>${r.name}</b> ${r.rolle}</span>`; })}</div>`}
+      ${(d.kapitel||[]).map((k,i)=>html`<section key=${'k'+i} className="a-chapter">
+        ${k.emoji && html`<div className="a-emoji" aria-hidden="true">${k.emoji}</div>`}
+        <h2 className="a-h">${k.titel}</h2>
+        <div className="a-orn" aria-hidden="true">— ✦ —</div>
+        ${(k.absaetze||[]).map((p,j)=>html`<p key=${j}>${p}</p>`)}
+      </section>`)}
+      ${d.tipp && html`<aside className="a-tip"><b>Mein Tipp</b><p>${d.tipp}</p></aside>`}
+      <div className="a-retone">
+        <span className="muted small">Nochmal in einem anderen Ton?</span>
+        <div className="tones light"><${ToneButtons} tone=${tone} setTone=${setTone}/></div>
+        <div><button className="btn btn-ghost" onClick=${()=>onRun(tone)}>Neu schreiben</button></div>
+      </div>
+    </div>`;
+  }
+  return html`<article className="article">
+    <h1 className="a-title">${d ? d.titel : title}</h1>
+    ${d && d.untertitel && html`<p className="a-sub">${d.untertitel}</p>`}
+    <div className="byline"><${Logo}/><div><b>Chatlupe</b><small>Liest mit, zählt nach und sagt dir ehrlich, was sie sieht.</small></div></div>
+    <button className="btn-share" onClick=${share}>↗ Report teilen</button>
+    ${shared==='ok' && html`<p className="muted small" style=${{textAlign:'center'}}>Zusammenfassung kopiert.</p>`}
+    ${shared && shared!=='ok' && html`<pre className="copyfallback">${shared}</pre>`}
+    <p className="a-privacy">🔒 Die Statistik wurde in deinem Browser berechnet. Für den Text hat Claude nur die Zahlen und einen Ausschnitt gesehen.</p>
+    ${body}
+    <${Details} a=${a}/>
+  </article>`;
 }
 
-function ReportStory(props){
-  const {a, rstep} = props;
+function ReportStory({a, rstep}){
   if (rstep===1) return html`<${Calendar} a=${a}/>`;
   if (rstep===2) return html`<${Shares} a=${a}/>`;
   if (rstep===3) return html`<${Rhythm} a=${a}/>`;
   if (rstep===4) return html`<${Longest} a=${a}/>`;
   if (rstep===5) return html`<${FirstDay} a=${a}/>`;
-  if (rstep===6) return html`<${ChangeStep} a=${a}/>`;
-  return html`<${Closing} ...${props}/>`;
+  if (rstep===6) return html`<${LastDay} a=${a}/>`;
+  return html`<${Words} a=${a}/>`;
 }
 
 function Home({onStart, demos, onDemo}){
@@ -670,7 +728,7 @@ function App(){
     setAi({status:'loading'});
     try{
       const res = await s.json(buildPrompt(a,t,title,kind,lang), {signal:c.signal});
-      if (!res || typeof res!=='object' || !res.fazit) throw {code:'invalid_json'};
+      if (!res || typeof res!=='object' || !res.titel || !Array.isArray(res.kapitel)) throw {code:'invalid_json'};
       if (ctl.current===c) setAi({status:'done', data:res, tone:t});
     }catch(e){
       if (ctl.current!==c) return;
@@ -694,10 +752,10 @@ function App(){
   if (view==='home') return html`<${Home} onStart=${start} demos=${demos} onDemo=${openDemo}/>`;
 
   const k = kindById(kind);
-  const wide = cur===8 && rstep>=6;
-  const shownStep = cur===8 ? rstep : cur;
+  const wide = false;
+  const shownStep = cur===8 ? Math.min(rstep,7) : cur;
   let head, body, next = null;
-  head = cur===8 ? RSTEPS[rstep-1] : STEPS[cur-1];
+  head = cur===8 ? (rstep<=7 ? RSTEPS[rstep-1] : null) : STEPS[cur-1];
   if (cur===1){
     body = html`<${KindPicker} selected=${kind} onPick=${id=>{ setKind(id); setStep(2); }}/>`;
     if (kind) next = {label:'Weiter', go:2};
@@ -726,30 +784,31 @@ function App(){
   } else if (cur===7){
     body = html`<${CreateStep} title=${title} a=${a} kind=${kind} lang=${lang} tone=${tone} setTone=${setTone} sampleAvail=${sampleAvail} onCreate=${create}/>`;
   } else {
-    body = html`<${ReportStory} a=${a} rstep=${rstep} title=${title} ai=${ai} tone=${tone} setTone=${setTone} onRun=${runAi} onStop=${()=>ctl.current&&ctl.current.abort()} sampleAvail=${sampleAvail}/>`;
-    if (rstep<7) next = {label:rstep===6?'Zum Fazit':'Weiter', go:'r'};
+    body = rstep<=7 ? html`<${ReportStory} a=${a} rstep=${rstep}/>`
+      : html`<${Article} a=${a} title=${title} ai=${ai} tone=${tone} setTone=${setTone} onRun=${runAi} onStop=${()=>ctl.current&&ctl.current.abort()} sampleAvail=${sampleAvail}/>`;
+    if (rstep<=7) next = {label:rstep===7?'Report ansehen':'Weiter', go:'r'};
   }
 
   return html`<div className="flow">
     <div className="flowbar"><div className=${'flowbar-in'+(wide?' wide':'')}>
       <button className="iconbtn" aria-label=${cur===1?'Zur Startseite':'Zurück'} onClick=${back}><${ArrowLeft}/></button>
       <div className="progress" role="progressbar" aria-label="Fortschritt" aria-valuemin="1" aria-valuemax="7" aria-valuenow=${shownStep}><span style=${{width:(shownStep/7*100)+'%'}}></span></div>
-      <span className="stepcount">${cur===8 ? `Report ${rstep} von 7` : `${cur} von 7`}</span>
+      <span className="stepcount">${cur===8 ? (rstep>7 ? 'Dein Report' : `Report ${rstep} von 7`) : `${cur} von 7`}</span>
     </div></div>
     <main className=${'flow-body'+(wide?' wide':'')}>
-      <div className="step-head">
+      ${head && html`<div className="step-head">
         ${cur>=4 && html`<div style=${{display:'flex',gap:8,flexWrap:'wrap'}}>
           ${chat.isDemo && html`<span className="chip example">Beispielchat, frei erfunden</span>`}
           ${k && html`<span className="chip">${k.icon} ${k.label}</span>`}
         </div>`}
         <h2>${head.t}</h2>
         ${head.s && html`<p className="muted">${head.s}</p>`}
-      </div>
+      </div>`}
       ${body}
       <div className="flow-nav">
         ${next && html`<button className="btn btn-mark btn-lg" onClick=${()=> next.go==='r' ? setRstep(rstep+1) : setStep(next.go)}>${next.label} <span aria-hidden="true">→</span></button>`}
-        ${cur===8 && rstep===7 && html`<button className="btn btn-ink" onClick=${restart}>Neuen Chat auswerten</button>`}
-        ${cur===8 && rstep===7 && html`<button className="btn btn-ghost" onClick=${()=>setView('home')}>Zur Startseite</button>`}
+        ${cur===8 && rstep===8 && html`<button className="btn btn-ink" onClick=${restart}>Neuen Chat auswerten</button>`}
+        ${cur===8 && rstep===8 && html`<button className="btn btn-ghost" onClick=${()=>setView('home')}>Zur Startseite</button>`}
       </div>
     </main>
   </div>`;

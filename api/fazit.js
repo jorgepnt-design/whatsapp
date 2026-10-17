@@ -51,7 +51,7 @@ export default async function handler(req, res) {
     upstream = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5', max_tokens: 4000, messages: [{ role: 'user', content: prompt }] }),
     });
   } catch {
     return res.status(502).json({ error: 'upstream_error' });
@@ -65,6 +65,6 @@ export default async function handler(req, res) {
   const data = await upstream.json();
   const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
   const parsed = extractJson(text);
-  if (!parsed || !parsed.fazit) return res.status(502).json({ error: 'invalid_json' });
+  if (!parsed || !parsed.titel || !Array.isArray(parsed.kapitel)) return res.status(502).json({ error: 'invalid_json' });
   return res.status(200).json(parsed);
 }
