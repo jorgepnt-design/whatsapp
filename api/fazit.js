@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { paywallOn, verifyToken } from './_lib/paypal.js';
 
 export const config = { maxDuration: 120 };
 
@@ -30,7 +29,7 @@ function extractJson(text) {
 export default async function handler(req, res) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (req.method === 'GET') {
-    return res.status(200).json({ configured: Boolean(key), paywall: paywallOn() });
+    return res.status(200).json({ configured: Boolean(key) });
   }
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'GET, POST');
@@ -46,7 +45,6 @@ export default async function handler(req, res) {
   const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
   if (limited(ip)) return res.status(429).json({ error: 'rate_limited' });
   const body = typeof req.body === 'string' ? (() => { try { return JSON.parse(req.body); } catch { return {}; } })() : (req.body || {});
-  if (paywallOn() && !verifyToken(body.token)) return res.status(402).json({ error: 'payment_required' });
   const prompt = body.prompt;
   if (typeof prompt !== 'string' || !prompt.startsWith('Du bist Chatlupe')) {
     return res.status(400).json({ error: 'invalid_request' });

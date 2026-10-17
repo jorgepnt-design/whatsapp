@@ -15,7 +15,7 @@ export async function getAi() {
   const json = async (prompt, opts = {}) => {
     let res;
     try {
-      res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, token: opts.token }), signal: opts.signal });
+      res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }), signal: opts.signal });
     } catch (e) {
       throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'upstream_error' };
     }
