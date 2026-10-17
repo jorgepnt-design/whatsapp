@@ -122,7 +122,8 @@ const AI_ERRORS = {
   rate_limited:'Gerade zu viele Anfragen. Versuch es in ein paar Minuten noch einmal.',
   prompt_too_large:'Der Chat ist zu lang für ein Fazit. Lade einen kürzeren Export hoch.',
   invalid_json:'Die Antwort kam in einem unerwarteten Format. Tipp nochmal auf den Knopf.',
-  refused:'Claude hat diesen Chat nicht bewertet. Probier einen anderen Ton.'
+  refused:'Claude hat diesen Chat nicht bewertet. Probier einen anderen Ton.',
+  payment_required:'Deine Freischaltung ist abgelaufen. Schalte den Report bitte erneut frei.'
 };
 
 function ToneButtons({tone, setTone}){
@@ -331,7 +332,7 @@ function LangPicker({lang, setLang, onDone}){
   </div>`;
 }
 
-function CreateStep({title, a, kind, lang, tone, setTone, sampleAvail, onCreate}){
+function CreateStep({title, a, kind, lang, tone, setTone, sampleAvail, onCreate, needPay, payCfg}){
   const k = kindById(kind);
   return html`<div style=${{display:'grid',gap:20}}>
     <div className="summary-card">
@@ -347,6 +348,7 @@ function CreateStep({title, a, kind, lang, tone, setTone, sampleAvail, onCreate}
     <div className="create-wrap"><button className="btn-create" onClick=${onCreate}><${Sparkle}/> Meinen Report erstellen</button></div>
     <p className="muted" style=${{fontSize:'.85rem'}}>${sampleAvail===false
       ? 'Das KI-Fazit ist in dieser Version nicht eingerichtet. Du bekommst die komplette Statistik.'
+      : needPay ? `Die Statistik ist kostenlos und bleibt in deinem Browser. Den ausführlichen, von Claude geschriebenen Report schaltest du am Ende per PayPal frei (${fmtPrice(payCfg)}).`
       : 'Beim Tippen gehen die Statistik und ein Ausschnitt von rund 220 Nachrichten an Claude, damit das Fazit geschrieben werden kann. Die Statistik selbst bleibt in deinem Browser.'}</p>
   </div>`;
 }
@@ -592,7 +594,73 @@ function Details({a}){
   </details>`;
 }
 
-function Article({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
+const fmtPrice = cfg => new Intl.NumberFormat('de-DE',{style:'currency',currency:cfg.currency||'EUR'}).format(Number(cfg.price));
+let paypalSdk = null;
+function loadPaypal(cfg){
+  if (window.paypal) return Promise.resolve(window.paypal);
+  if (paypalSdk) return paypalSdk;
+  paypalSdk = new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(cfg.clientId)}&currency=${encodeURIComponent(cfg.currency)}&intent=capture&components=buttons&disable-funding=paylater&locale=de_DE`;
+    s.onload = ()=> window.paypal ? resolve(window.paypal) : reject(new Error('no sdk'));
+    s.onerror = ()=>{ paypalSdk = null; reject(new Error('load failed')); };
+    document.head.appendChild(s);
+  });
+  return paypalSdk;
+}
+
+function Paywall({cfg, onPaid}){
+  const box = useRef(null);
+  const [state,setState] = useState('loading');
+  const [msg,setMsg] = useState('');
+  useEffect(()=>{
+    if (!cfg.ready || !cfg.clientId) { setState('off'); return; }
+    let alive = true, buttons = null;
+    loadPaypal(cfg).then(pp=>{
+      if (!alive || !box.current) return;
+      buttons = pp.Buttons({
+        style:{ layout:'vertical', shape:'rect', color:'gold', label:'pay', height:48 },
+        createOrder: async ()=>{
+          setMsg('');
+          const r = await fetch('/api/paypal-order', { method:'POST' });
+          const d = await r.json().catch(()=>({}));
+          if (!r.ok || !d.id) throw new Error(d.error || 'order');
+          return d.id;
+        },
+        onApprove: async data=>{
+          setState('verifying');
+          const r = await fetch('/api/paypal-capture', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({orderID:data.orderID}) });
+          const d = await r.json().catch(()=>({}));
+          if (!alive) return;
+          if (r.ok && d.token){ setState('paid'); onPaid(d.token); }
+          else { setState('ready'); setMsg('Die Zahlung konnte nicht bestätigt werden. Versuch es noch einmal. Zeigt PayPal dir trotzdem eine Zahlung an, melde dich mit der Transaktionsnummer.'); }
+        },
+        onCancel: ()=> setMsg('Zahlung abgebrochen. Du kannst es jederzeit noch einmal versuchen.'),
+        onError: ()=> setMsg('PayPal hat gerade nicht geklappt. Versuch es in einem Moment noch einmal.')
+      });
+      buttons.render(box.current).then(()=> alive && setState('ready')).catch(()=> alive && setState('error'));
+    }).catch(()=> alive && setState('error'));
+    return ()=>{ alive = false; if (buttons && buttons.close) buttons.close().catch(()=>{}); };
+  },[cfg.clientId, cfg.ready]);
+  return html`<div className="paywall">
+    <div className="pw-head"><span className="pw-lock" aria-hidden="true">🔒</span><div><b>Dein ganzer Report</b><span className="muted small">Einmalig, kein Abo</span></div><b className="pw-price">${fmtPrice(cfg)}</b></div>
+    <ul className="pw-list">
+      <li>Eine ausführliche Kolumne über euren Chat, 700 bis 900 Wörter</li>
+      <li>Ein eigenes Kapitel für jede Hauptperson und eins dazu, was sich verändert hat</li>
+      <li>In deiner Sprache und deinem Ton, 3 Stunden lang beliebig oft neu schreiben</li>
+    </ul>
+    ${state==='off' ? html`<p className="err">Die Bezahlung ist noch nicht eingerichtet. Schau später noch einmal vorbei.</p>`
+      : state==='error' ? html`<p className="err">PayPal ließ sich nicht laden. Prüf deine Verbindung oder einen Werbeblocker und lade die Seite neu.</p>`
+      : state==='verifying' ? html`<div className="thinking dark"><i></i><i></i><i></i><span>Zahlung wird bestätigt…</span></div>`
+      : state==='paid' ? html`<p className="ok-line">Bezahlt. Dein Report wird geschrieben.</p>` : null}
+    <div ref=${box} className="pw-buttons" hidden=${state==='off'||state==='error'||state==='paid'||state==='verifying'}></div>
+    ${state==='loading' && html`<p className="muted small">PayPal wird geladen…</p>`}
+    ${msg && html`<p className="err">${msg}</p>`}
+    <p className="muted small">Bezahlung über PayPal. Erst danach gehen die Statistik und ein Ausschnitt von rund 220 Nachrichten an Claude, damit der Report geschrieben wird. Die Statistik oben bleibt kostenlos.</p>
+  </div>`;
+}
+
+function Article({a, title, ai, tone, setTone, onRun, onStop, sampleAvail, needPay, payCfg, onPaid}){
   const [shared,setShared] = useState(null);
   const st = ai || {status:'idle'};
   const d = st.status==='done' ? st.data : null;
@@ -612,6 +680,8 @@ function Article({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
       <div className="skel"><i></i><i></i><i style=${{width:'70%'}}></i></div>
       <div><button className="btn btn-ghost" onClick=${onStop}>Abbrechen</button></div>
     </div>`;
+  } else if (!d && needPay){
+    body = html`<${Paywall} cfg=${payCfg} onPaid=${onPaid}/>`;
   } else if (!d){
     body = html`<div className="a-note">
       <p>Lass Chatlupe den Chat lesen und dir einen ausführlichen Report schreiben: wer welche Rolle spielt und was sich verändert hat.</p>
@@ -646,7 +716,7 @@ function Article({a, title, ai, tone, setTone, onRun, onStop, sampleAvail}){
     <button className="btn-share" onClick=${share}>↗ Report teilen</button>
     ${shared==='ok' && html`<p className="muted small" style=${{textAlign:'center'}}>Zusammenfassung kopiert.</p>`}
     ${shared && shared!=='ok' && html`<pre className="copyfallback">${shared}</pre>`}
-    <p className="a-privacy">🔒 Die Statistik wurde in deinem Browser berechnet. Für den Text hat Claude nur die Zahlen und einen Ausschnitt gesehen.</p>
+    <p className="a-privacy">🔒 Die Statistik wurde in deinem Browser berechnet.${d ? ' Für den Text hat Claude nur die Zahlen und einen Ausschnitt gesehen.' : ' Bisher hat niemand deinen Chat gesehen.'}</p>
     ${body}
     <${Details} a=${a}/>
   </article>`;
@@ -701,6 +771,8 @@ function App(){
   const [tone,setTone] = useState('ehrlich');
   const [focus,setFocus] = useState(null);
   const [rstep,setRstep] = useState(1);
+  const [payCfg,setPayCfg] = useState(null);
+  const [payToken,setPayToken] = useState(null);
   const [ai,setAi] = useState(null);
   const [sampleAvail,setSampleAvail] = useState(null);
   const sampleRef = useRef(null);
@@ -709,6 +781,10 @@ function App(){
     let s=null; try{ s = await getAi(); }catch(e){ s=null; }
     if(!alive) return; sampleRef.current=s; setSampleAvail(!!s);
   })(); return ()=>{alive=false}; },[]);
+  useEffect(()=>{ let alive=true;
+    fetch('/api/paypal-config').then(r=>r.ok?r.json():null).then(c=>{ if(alive && c && typeof c.enabled==='boolean') setPayCfg(c); }).catch(()=>{});
+    return ()=>{alive=false}; },[]);
+  const needPay = !!(payCfg && payCfg.enabled && !(sampleRef.current && sampleRef.current.viaClaude)) && !payToken;
   useEffect(()=>{ window.scrollTo(0,0); },[step,view,rstep]);
 
   const cur = view==='flow' ? Math.min(step, chat ? 8 : 3) : 0;
@@ -721,33 +797,35 @@ function App(){
   useEffect(()=>{ if (ctl.current) ctl.current.abort(); setAi(null); },[chat,aliases,kind,lang]);
   const title = name.trim() || (chat && chat.title) || 'Dein Chat';
 
-  async function runAi(t){
+  async function runAi(t, tok=payToken){
     const s = sampleRef.current; if (!s || !a) return;
     if (ctl.current) ctl.current.abort();
     const c = new AbortController(); ctl.current = c;
     setAi({status:'loading'});
     try{
-      const res = await s.json(buildPrompt(a,t,title,kind,lang), {signal:c.signal});
+      const res = await s.json(buildPrompt(a,t,title,kind,lang), {signal:c.signal, token:tok});
       if (!res || typeof res!=='object' || !res.titel || !Array.isArray(res.kapitel)) throw {code:'invalid_json'};
       if (ctl.current===c) setAi({status:'done', data:res, tone:t});
     }catch(e){
       if (ctl.current!==c) return;
       const code = e && e.code;
+      if (code==='payment_required') setPayToken(null);
       const text = code in AI_ERRORS ? AI_ERRORS[code] : 'Verbindung unterbrochen. Tipp nochmal auf den Knopf.';
       setAi(text ? {status:'error', msg:text, hide: code==='not_granted'||code==='sampling_disabled'} : {status:'idle'});
     }
   }
 
   function start(){ setView('flow'); setStep(1); }
-  function loadChat(m, t){ setChat({msgs:m, title:t, isDemo:false, stamp:Date.now()}); setAliases({}); setName(t); setFocus(null); setStep(4); }
+  function loadChat(m, t){ setPayToken(null); setChat({msgs:m, title:t, isDemo:false, stamp:Date.now()}); setAliases({}); setName(t); setFocus(null); setStep(4); }
   function openDemo(d){
-    setChat({msgs:d.msgs, title:d.title, tag:d.tag, isDemo:true, demoId:d.id, stamp:Date.now()});
+    setPayToken(null); setChat({msgs:d.msgs, title:d.title, tag:d.tag, isDemo:true, demoId:d.id, stamp:Date.now()});
     setAliases({}); setName(d.title); setFocus(null); setKind(k=>k||DEMO_KIND[d.id]); setView('flow'); setStep(4);
   }
   function setAlias(orig, val){ setAliases(o=>({...o, [orig]:val})); }
   function back(){ if (cur===8 && rstep>1) setRstep(rstep-1); else if (cur>1) setStep(cur-1); else setView('home'); }
-  function restart(){ setChat(null); setAliases({}); setName(''); setKind(null); setFocus(null); setStep(1); }
-  function create(){ setRstep(1); setStep(8); if (sampleRef.current) runAi(tone); }
+  function restart(){ setPayToken(null); setChat(null); setAliases({}); setName(''); setKind(null); setFocus(null); setStep(1); }
+  function create(){ setRstep(1); setStep(8); if (sampleRef.current && !needPay) runAi(tone); }
+  function onPaid(tok){ setPayToken(tok); runAi(tone, tok); }
 
   if (view==='home') return html`<${Home} onStart=${start} demos=${demos} onDemo=${openDemo}/>`;
 
@@ -782,10 +860,10 @@ function App(){
     body = html`<${LangPicker} lang=${lang} setLang=${setLang} onDone=${()=>setStep(7)}/>`;
     next = {label:'Weiter', go:7};
   } else if (cur===7){
-    body = html`<${CreateStep} title=${title} a=${a} kind=${kind} lang=${lang} tone=${tone} setTone=${setTone} sampleAvail=${sampleAvail} onCreate=${create}/>`;
+    body = html`<${CreateStep} title=${title} a=${a} kind=${kind} lang=${lang} tone=${tone} setTone=${setTone} sampleAvail=${sampleAvail} onCreate=${create} needPay=${needPay} payCfg=${payCfg}/>`;
   } else {
     body = rstep<=7 ? html`<${ReportStory} a=${a} rstep=${rstep}/>`
-      : html`<${Article} a=${a} title=${title} ai=${ai} tone=${tone} setTone=${setTone} onRun=${runAi} onStop=${()=>ctl.current&&ctl.current.abort()} sampleAvail=${sampleAvail}/>`;
+      : html`<${Article} a=${a} title=${title} ai=${ai} tone=${tone} setTone=${setTone} onRun=${runAi} onStop=${()=>ctl.current&&ctl.current.abort()} sampleAvail=${sampleAvail} needPay=${needPay} payCfg=${payCfg} onPaid=${onPaid}/>`;
     if (rstep<=7) next = {label:rstep===7?'Report ansehen':'Weiter', go:'r'};
   }
 
