@@ -287,3 +287,4 @@ mark.ph{background:var(--mark);color:var(--mark-ink);padding:0 .25em;border-radi
 .incl input:checked + .incl-track::after{transform:translateX(18px)}
 .incl input:focus-visible + .incl-track{outline:3px solid var(--p0);outline-offset:2px}
 @media (prefers-reduced-motion: reduce){.incl-track,.incl-track::after{transition:none}}
+.brand-by{font-family:var(--f-body);font-weight:600;font-size:.78rem;color:var(--muted);letter-spacing:0;margin-left:2px}

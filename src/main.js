@@ -679,7 +679,7 @@ function ReportStory({a, rstep}){
 function Home({onStart, demos, onDemo}){
   return html`<div className="wrap">
     <header className="top">
-      <a className="brand" href="#top"><${Logo}/>Chatlupe</a>
+      <a className="brand" href="#top"><${Logo}/><span>Chatlupe <span className="brand-by">by Jorge</span></span></a>
       <button className="btn btn-ink" onClick=${onStart}>Jetzt starten</button>
     </header>
     <section className="hero" id="top">
@@ -697,7 +697,7 @@ function Home({onStart, demos, onDemo}){
       <p className="privacy">Die Auswertung läuft komplett in deinem Browser. Nur wenn du am Ende den Report mit KI-Fazit erstellst, gehen Statistik und ein Ausschnitt von rund 220 Nachrichten an Claude.</p>
     </section>
     <footer>
-      <span><b style=${{color:'var(--ink)'}}>Chatlupe</b> · Statistik im Browser, Fazit von Claude</span>
+      <span><b style=${{color:'var(--ink)'}}>Chatlupe by Jorge</b> · Statistik im Browser, Report von Claude</span>
       <span>Die Beispielchats und alle Namen darin sind erfunden.</span>
       <${LegalLinks}/>
     </footer>

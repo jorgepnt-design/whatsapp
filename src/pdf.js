@@ -33,6 +33,7 @@ const s = StyleSheet.create({
   page:{ fontFamily:'Figtree', fontSize:10.5, color:C.ink, paddingTop:44, paddingBottom:56, paddingHorizontal:44, lineHeight:1.45, backgroundColor:C.surface },
   brandRow:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:22 },
   brand:{ fontFamily:'Unbounded', fontWeight:700, fontSize:11, color:C.ink },
+  brandBy:{ fontFamily:'Figtree', fontWeight:600, fontSize:9, color:C.muted },
   brandDot:{ width:9, height:9, borderRadius:5, backgroundColor:P[0], marginRight:6 },
   small:{ fontSize:8.5, color:C.muted },
   kicker:{ flexDirection:'row', marginBottom:10 },
@@ -156,7 +157,7 @@ export function ReportPdf({a, title, kind, ai}){
       <${View} style=${s.footerLine} fixed/>
       <${Text} style=${s.footerLeft} fixed>${'Chatlupe · ' + (clean(title) || 'Dein Chat') + ' · Report vom ' + fmtLong(Date.now())}</${Text}>
       <${View} style=${s.brandRow} fixed>
-        <${View} style=${{ flexDirection:'row', alignItems:'center' }}><${View} style=${s.brandDot}/><${Text} style=${s.brand}>Chatlupe</${Text}></${View}>
+        <${View} style=${{ flexDirection:'row', alignItems:'center' }}><${View} style=${s.brandDot}/><${Text} style=${s.brand}>Chatlupe <${Text} style=${s.brandBy}>by Jorge</${Text}></${Text}></${View}>
         <${Text} style=${s.small}>WhatsApp-Report</${Text}>
       </${View}>
 

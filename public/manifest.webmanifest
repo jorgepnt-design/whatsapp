@@ -1,6 +1,6 @@
 {
-  "name": "Chatlupe",
-  "short_name": "Chatlupe",
+  "name": "Chatlupe by Jorge",
+  "short_name": "Chatlupe by Jorge",
   "description": "WhatsApp-Chat hochladen und sehen, wer mehr investiert, wer schneller antwortet und was sich verändert hat.",
   "start_url": "./",
   "display": "standalone",
