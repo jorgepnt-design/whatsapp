@@ -290,28 +290,39 @@ function Participants({rows, total, aliases, onWho}){
   </div>`;
 }
 
-function NameCleanup({rows, msgs, aliases, setAlias, focus}){
+function NameCleanup({rows, msgs, aliases, setAlias, focus, excluded, setExcluded}){
   const [all,setAll] = useState(false);
   const focusIdx = focus ? rows.findIndex(r=>r.name===focus) : -1;
   const shown = (all || focusIdx>=60) ? rows : rows.slice(0,60);
   const sample = n => { const m = msgs.filter(x=>x.name===n && !MEDIA_RE.test(x.text) && !DELETED_RE.test(x.text) && x.text.length>12).slice(-40).sort((a,b)=>b.text.length-a.text.length)[0]; return m ? m.text.replace(/\n/g,' ').slice(0,110) : null; };
+  const included = rows.filter(r=>!excluded[r.name]).length;
+  const toggle = n => setExcluded(o=>{ const x = {...o}; if (x[n]) delete x[n]; else x[n] = true; return x; });
   return html`<div style=${{display:'grid',gap:10}}>
+    <div className="pick-bar">
+      <span className="muted small">${included} von ${rows.length} im Bericht</span>
+      ${rows.length>2 && html`<span className="pick-all"><button className="linkbtn" onClick=${()=>setExcluded({})}>Alle</button><button className="linkbtn" onClick=${()=>setExcluded(Object.fromEntries(rows.map(r=>[r.name,true])))}>Keine</button></span>`}
+    </div>
     <ul className="nlist">${shown.map(r=>{
       const phone = isPhone(r.name), alias = aliases[r.name], shownName = cleanAlias(alias) || (phone ? '' : r.name);
-      const id = 'name-'+r.idx;
-      const ex = phone && !cleanAlias(alias) ? sample(r.name) : null;
-      return html`<li className="nrow" key=${r.name}>
+      const id = 'name-'+r.idx, off = !!excluded[r.name];
+      const ex = phone && !cleanAlias(alias) && !off ? sample(r.name) : null;
+      return html`<li className=${'nrow'+(off?' off':'')} key=${r.name}>
         <span className="avatar" style=${{background:pColor(r.idx)}} aria-hidden="true">${shownName ? [...shownName][0].toUpperCase() : html`<${PersonIcon}/>`}</span>
         <div className="nfield">
           <label className="sr" htmlFor=${id}>Name für ${r.name}</label>
           <input id=${id} className="field" value=${alias!=null ? alias : (phone?'':r.name)} placeholder=${phone?'Vorname':r.name} maxLength="40" autoFocus=${focus===r.name}
-            onInput=${e=>setAlias(r.name, e.target.value)}/>
+            disabled=${off} onInput=${e=>setAlias(r.name, e.target.value)}/>
           ${(phone || (cleanAlias(alias) && cleanAlias(alias)!==r.name)) && html`<small className="muted">${r.name}${ex ? html` · <q>${ex}</q>` : null}</small>`}
         </div>
+        <label className="incl" title=${off ? 'Nicht im Bericht' : 'Im Bericht'}>
+          <input type="checkbox" checked=${!off} onChange=${()=>toggle(r.name)} aria-label=${`${shownName || r.name} im Bericht`}/>
+          <span className="incl-track" aria-hidden="true"></span>
+        </label>
       </li>`; })}
     </ul>
     ${rows.length>60 && html`<div><button className="linkbtn" onClick=${()=>setAll(!all)}>${all?'Weniger anzeigen':`Alle ${rows.length} anzeigen`}</button></div>`}
-    <p className="muted" style=${{fontSize:'.85rem'}}>Die Namen bleiben in deinem Browser. Gibst du zwei Einträgen denselben Namen, werden sie zusammengelegt.</p>
+    ${included===0 && html`<p className="err">Wähle mindestens eine Person für den Bericht aus.</p>`}
+    <p className="muted" style=${{fontSize:'.85rem'}}>Mit dem Schalter rechts entscheidest du, wer in den Bericht kommt. Ausgeschaltete Personen und ihre Nachrichten zählen weder in der Statistik noch im Report oder PDF. Die Namen bleiben in deinem Browser. Gibst du zwei Einträgen denselben Namen, werden sie zusammengelegt.</p>
   </div>`;
 }
 
@@ -700,6 +711,7 @@ function App(){
   const [kind,setKind] = useState(null);
   const [chat,setChat] = useState(null);
   const [aliases,setAliases] = useState({});
+  const [excluded,setExcluded] = useState({});
   const [name,setName] = useState('');
   const [lang,setLang] = useState('Deutsch');
   const [tone,setTone] = useState('ehrlich');
@@ -719,14 +731,17 @@ function App(){
   })(); return ()=>{alive=false}; },[]);
   useEffect(()=>{ window.scrollTo(0,0); },[step,view,rstep]);
 
-  const cur = view==='flow' ? Math.min(step, chat ? 8 : 3) : 0;
+  const allOut = useMemo(()=> !!chat && chat.msgs.every(m=>excluded[m.name]), [chat, excluded]);
+  const cur = view==='flow' ? Math.min(step, chat ? (allOut ? 5 : 8) : 3) : 0;
   const rows = useRows(chat ? chat.msgs : []);
   const needA = cur>=7;
   const a = useMemo(()=>{
     if (!needA || !chat) return null;
-    return analyze(chat.msgs.map(m=>{ const v=cleanAlias(aliases[m.name]); return v ? {...m, name:v} : m; }));
-  }, [needA, chat, aliases]);
-  useEffect(()=>{ if (ctl.current) ctl.current.abort(); setAi(null); },[chat,aliases,kind,lang]);
+    const kept = chat.msgs.filter(m=>!excluded[m.name]);
+    if (!kept.length) return null;
+    return analyze(kept.map(m=>{ const v=cleanAlias(aliases[m.name]); return v ? {...m, name:v} : m; }));
+  }, [needA, chat, aliases, excluded]);
+  useEffect(()=>{ if (ctl.current) ctl.current.abort(); setAi(null); },[chat,aliases,excluded,kind,lang]);
   const title = name.trim() || (chat && chat.title) || 'Dein Chat';
 
   async function runAi(t){
@@ -747,14 +762,14 @@ function App(){
   }
 
   function start(){ setView('flow'); setStep(1); }
-  function loadChat(m, t){ setChat({msgs:m, title:t, isDemo:false, stamp:Date.now()}); setAliases({}); setName(t); setFocus(null); setStep(4); }
+  function loadChat(m, t){ setChat({msgs:m, title:t, isDemo:false, stamp:Date.now()}); setAliases({}); setExcluded({}); setName(t); setFocus(null); setStep(4); }
   function openDemo(d){
     setChat({msgs:d.msgs, title:d.title, tag:d.tag, isDemo:true, demoId:d.id, stamp:Date.now()});
-    setAliases({}); setName(d.title); setFocus(null); setKind(k=>k||DEMO_KIND[d.id]); setView('flow'); setStep(4);
+    setAliases({}); setExcluded({}); setName(d.title); setFocus(null); setKind(k=>k||DEMO_KIND[d.id]); setView('flow'); setStep(4);
   }
   function setAlias(orig, val){ setAliases(o=>({...o, [orig]:val})); }
   function back(){ if (cur===8 && rstep>1) setRstep(rstep-1); else if (cur>1) setStep(cur-1); else setView('home'); }
-  function restart(){ setChat(null); setAliases({}); setName(''); setKind(null); setFocus(null); setStep(1); }
+  function restart(){ setChat(null); setAliases({}); setExcluded({}); setName(''); setKind(null); setFocus(null); setStep(1); }
   function create(){ setRstep(1); setStep(8); if (sampleRef.current) runAi(tone); }
 
   if (legal) return html`<${LegalPage} page=${legal} onBack=${()=>{ history.replaceState(null,'',location.pathname+location.search); setLegal(null); }}/>`;
@@ -785,8 +800,8 @@ function App(){
     </div>`;
     next = {label:'Weiter', go:5};
   } else if (cur===5){
-    body = html`<${NameCleanup} rows=${rows} msgs=${chat.msgs} aliases=${aliases} setAlias=${setAlias} focus=${focus}/>`;
-    next = {label:'Weiter', go:6};
+    body = html`<${NameCleanup} rows=${rows} msgs=${chat.msgs} aliases=${aliases} setAlias=${setAlias} focus=${focus} excluded=${excluded} setExcluded=${setExcluded}/>`;
+    if (rows.some(r=>!excluded[r.name])) next = {label:'Weiter', go:6};
   } else if (cur===6){
     body = html`<${LangPicker} lang=${lang} setLang=${setLang} onDone=${()=>setStep(7)}/>`;
     next = {label:'Weiter', go:7};
