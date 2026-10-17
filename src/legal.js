@@ -6,7 +6,6 @@ const html = htm.bind(React.createElement);
 // Angaben des Betreibers. Leere Felder erscheinen auf den Seiten als markierter Platzhalter.
 export const OPERATOR = {
   name: 'Jorge Pinto', // Vor- und Nachname (bzw. Firma mit Rechtsform und Vertretungsberechtigtem)
-  email: 'jorgepnt@web.de', // E-Mail-Adresse für Kontakt
   phone: '',           // optional
   updated: 'Oktober 2026'
 };
@@ -19,13 +18,12 @@ export const LEGAL_PAGES = {
 const O = OPERATOR;
 const F = (v, label) => v ? v : html`<mark className="ph">[${label}]</mark>`;
 const Address = () => html`<p>${F(O.name,'Vor- und Nachname')}</p>`;
-const Email = () => O.email ? html`<a href=${'mailto:'+O.email}>${O.email}</a>` : F('', 'E-Mail-Adresse');
 
 function Terms(){
   return html`<div>
     <p className="muted">Stand: ${O.updated}</p>
     <h2>1. Anbieter und Geltungsbereich</h2>
-    <p>Diese Bedingungen gelten für die Nutzung der Website Chatlupe, die von ${F(O.name,'Vor- und Nachname')} (im Folgenden „wir“) betrieben wird. Kontakt: <${Email}/>.</p>
+    <p>Diese Bedingungen gelten für die Nutzung der Website Chatlupe, die von ${F(O.name,'Vor- und Nachname')} (im Folgenden „wir“) betrieben wird.</p>
     <h2>2. Leistungen</h2>
     <p>Chatlupe wertet einen von dir hochgeladenen WhatsApp-Export statistisch aus. Diese Auswertung läuft vollständig in deinem Browser. Auf Wunsch schreibt eine KI (Claude von Anthropic) anschließend einen Report über deinen Chat. Die Nutzung ist kostenlos.</p>
     <p>Die Reports dienen der Unterhaltung. Sie sind keine psychologische, therapeutische oder rechtliche Beratung. Eine KI kann sich irren, Dinge falsch deuten oder überspitzen. Die Reports werden automatisch erzeugt und geben keine Meinung des Betreibers wieder.</p>
@@ -47,7 +45,6 @@ function Datenschutz(){
     <p className="muted">Stand: ${O.updated}</p>
     <h2>1. Verantwortlicher</h2>
     <${Address}/>
-    <p>E-Mail: <${Email}/></p>
     <h2>2. Das Wichtigste in Kürze</h2>
     <ul>
       <li>Die Statistik zu deinem Chat wird ausschließlich in deinem Browser berechnet. Dein Chat wird dafür nicht hochgeladen und nicht gespeichert.</li>
@@ -64,11 +61,9 @@ function Datenschutz(){
     <p>Rechtsgrundlage ist die Bereitstellung des von dir angeforderten Dienstes (Art. 6 Abs. 1 lit. b DSGVO). Soweit der Ausschnitt Nachrichten anderer Personen aus dem Chat enthält, stützen wir die Verarbeitung auf unser und dein berechtigtes Interesse an der gewünschten Auswertung (Art. 6 Abs. 1 lit. f DSGVO); wir übermitteln dafür nur einen begrenzten Ausschnitt und speichern nichts. Nach den Angaben von Anthropic werden Daten aus der API nicht zum Training der Modelle verwendet und nur für begrenzte Zeit gespeichert. Die Übermittlung in die USA stützt sich auf das EU-US Data Privacy Framework bzw. auf EU-Standardvertragsklauseln. Wir selbst speichern weder den Ausschnitt noch den fertigen Report.</p>
     <h2>6. Schriften und lokale Speicherung</h2>
     <p>Alle Schriften werden von unserem eigenen Server geladen; es findet keine Verbindung zu Google statt. Die Website verwendet weder Cookies noch den lokalen Speicher deines Browsers.</p>
-    <h2>7. Kontakt per E-Mail</h2>
-    <p>Wenn du uns schreibst, verarbeiten wir deine Angaben, um deine Anfrage zu beantworten (Art. 6 Abs. 1 lit. f DSGVO), und löschen sie, wenn sie nicht mehr benötigt werden.</p>
-    <h2>8. Deine Rechte</h2>
-    <p>Du hast das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch gegen Verarbeitungen auf Grundlage berechtigter Interessen (Art. 21). Wende dich dafür an <${Email}/>. Außerdem kannst du dich bei einer Datenschutz-Aufsichtsbehörde beschweren, zum Beispiel bei der Behörde deines Wohnorts oder der für uns zuständigen Behörde: Der Hessische Beauftragte für Datenschutz und Informationsfreiheit, Wiesbaden.</p>
-    <h2>9. Änderungen</h2>
+    <h2>7. Deine Rechte</h2>
+    <p>Du hast das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch gegen Verarbeitungen auf Grundlage berechtigter Interessen (Art. 21). Außerdem kannst du dich bei einer Datenschutz-Aufsichtsbehörde beschweren, zum Beispiel bei der Behörde deines Wohnorts oder der für uns zuständigen Behörde: Der Hessische Beauftragte für Datenschutz und Informationsfreiheit, Wiesbaden.</p>
+    <h2>8. Änderungen</h2>
     <p>Wir passen diese Datenschutzerklärung an, wenn sich die Website oder die Rechtslage ändert. Es gilt die jeweils hier veröffentlichte Fassung.</p>
   </div>`;
 }
@@ -77,7 +72,7 @@ const CONTENT = { agb:Terms, datenschutz:Datenschutz };
 
 export function LegalPage({page, onBack}){
   const Body = CONTENT[page];
-  const missing = !O.name || !O.email;
+  const missing = !O.name;
   return html`<div className="wrap legal">
     <header className="top"><button className="btn btn-ghost" onClick=${onBack}>← Zurück</button></header>
     <h1 className="legal-h">${LEGAL_PAGES[page]}</h1>
