@@ -28,7 +28,7 @@ export const SCENARIOS = [
       ['jo','später','hab kein Akku','was gibts zu essen','👍','bin unterwegs','ok'] ],
     shared:['👍','Ja','Danke','<Medien ausgeschlossen>','😂'] },
   { id:'wg', title:'WG Bergstraße', tag:'Gruppe', initials:'WG', seed:37, start:[2026,1,1], months:8,
-    names:['Jana','Malik','Sophie'],
+    names:['Jana','Malik','+49 151 12345678'],
     rate:t=>lerp(1.6,1.2,t), starter:t=>[.45,.35,lerp(.3,.08,t)],
     speed:(i,t)=>[15,9,lerp(20,240,t)][i], len:[2,8],
     hours:[.6,.3,.1,0,0,0,.2,.8,1,.8,.7,.9,1.3,1.1,1,1.1,1.4,1.8,2.2,2.4,2.2,1.8,1.3,.9],
